@@ -1,0 +1,17 @@
+# Dependensi Global (jika nanti ada)
+node_modules/
+
+# File Rahasia Global & Supabase
+.env
+.env.*
+
+# Supabase temporary folder
+supabase/.temp/
+supabase/tmp/
+
+# IDE settings & logs
+.vscode/
+.idea/
+*.log
+*.bak
+*.orig
