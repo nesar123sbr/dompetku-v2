@@ -29,13 +29,21 @@ export default function AppDateField({
 }: AppDateFieldProps) {
   const [isPickerVisible, setIsPickerVisible] = useState(false);
 
-  function handleChange(_event: DateTimePickerEvent, selectedDate?: Date) {
+  // 1. Fungsi saat user memilih tanggal (Pengganti onChange)
+  function handleValueChange(_event: DateTimePickerEvent, selectedDate?: Date) {
     if (Platform.OS === "android") {
-      setIsPickerVisible(false);
+      setIsPickerVisible(false); // Tutup kalender di Android setelah pilih
     }
 
     if (selectedDate) {
-      onChangeDate(dateToDateInput(selectedDate));
+      onChangeDate(dateToDateInput(selectedDate)); // Simpan tanggal
+    }
+  }
+
+  // 2. Fungsi saat user membatalkan / klik di luar kalender (Pengganti onChange)
+  function handleDismiss() {
+    if (Platform.OS === "android") {
+      setIsPickerVisible(false); // Sembunyikan kalender
     }
   }
 
@@ -71,10 +79,13 @@ export default function AppDateField({
       {isPickerVisible ? (
         <>
           <DateTimePicker
-            value={dateInputToDate(value)}
+            // PENYEMPURNAAN FINAL (Defensive Programming):
+            // Jika value ada, konversi. Jika kosong, gunakan tanggal dan jam saat ini (new Date())
+            value={value ? dateInputToDate(value) : new Date()}
             mode="date"
             display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={handleChange}
+            onValueChange={handleValueChange}
+            onDismiss={handleDismiss}
           />
 
           {Platform.OS === "ios" ? (
