@@ -242,14 +242,20 @@ export default function ProfilTabPage() {
       setIsProcessing(true);
       clearFeedback();
 
-      await exportLaporanBulananCsv(db);
+      const result = await exportLaporanBulananCsv(db);
 
-      setFeedbackSuccess("Laporan CSV berhasil dibuat.");
+      if (result !== null) {
+        setFeedbackSuccess("Laporan CSV berhasil disimpan.");
+      } else {
+        // Silent Cancel untuk user, tapi tercatat di terminal dev
+        console.log("Ekspor CSV dibatalkan oleh user.");
+      }
     } catch (error) {
+      console.log("handleExportCsv error:", error);
       setFeedbackError(
         error instanceof Error
           ? error.message
-          : "Laporan CSV belum berhasil dibuat."
+          : "Gagal mengekspor laporan CSV."
       );
     } finally {
       setIsProcessing(false);
@@ -261,14 +267,20 @@ export default function ProfilTabPage() {
       setIsProcessing(true);
       clearFeedback();
 
-      await exportLaporanBulananPdf(db);
+      const result = await exportLaporanBulananPdf(db);
 
-      setFeedbackSuccess("Laporan PDF berhasil dibuat.");
+      if (result !== null) {
+        setFeedbackSuccess("Laporan PDF berhasil disimpan.");
+      } else {
+        // Silent Cancel untuk user, tapi tercatat di terminal dev
+        console.log("Ekspor PDF dibatalkan oleh user.");
+      }
     } catch (error) {
+      console.log("handleExportPdf error:", error);
       setFeedbackError(
         error instanceof Error
           ? error.message
-          : "Laporan PDF belum berhasil dibuat."
+          : "Gagal mengekspor laporan PDF."
       );
     } finally {
       setIsProcessing(false);

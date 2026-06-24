@@ -318,14 +318,20 @@ export default function InsightTabPage() {
       setIsExporting(true);
       setExportMessage("");
 
-      await exportLaporanBulananPdf(db, { bulan: selectedBulan });
-      setExportMessage("Laporan PDF berhasil dibuat.");
+      const result = await exportLaporanBulananPdf(db, { bulan: selectedBulan });
+      
+      if (result !== null) {
+        setExportMessage("Laporan PDF berhasil disimpan.");
+      } else {
+        // Silent Cancel untuk user, tapi tercatat di terminal dev
+        console.log("Ekspor PDF dibatalkan oleh user.");
+      }
     } catch (error) {
       console.log("handleExportPdf error:", error);
       setExportMessage(
         error instanceof Error
           ? error.message
-          : "Laporan PDF belum berhasil dibuat."
+          : "Gagal mengekspor laporan PDF."
       );
     } finally {
       setIsExporting(false);
@@ -337,14 +343,20 @@ export default function InsightTabPage() {
       setIsExporting(true);
       setExportMessage("");
 
-      await exportLaporanBulananCsv(db, { bulan: selectedBulan });
-      setExportMessage("Laporan CSV berhasil dibuat.");
+      const result = await exportLaporanBulananCsv(db, { bulan: selectedBulan });
+      
+      if (result !== null) {
+        setExportMessage("Laporan CSV berhasil disimpan.");
+      } else {
+        // Silent Cancel untuk user, tapi tercatat di terminal dev
+        console.log("Ekspor CSV dibatalkan oleh user.");
+      }
     } catch (error) {
       console.log("handleExportCsv error:", error);
       setExportMessage(
         error instanceof Error
           ? error.message
-          : "Laporan CSV belum berhasil dibuat."
+          : "Gagal mengekspor laporan CSV."
       );
     } finally {
       setIsExporting(false);

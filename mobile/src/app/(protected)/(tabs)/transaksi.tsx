@@ -588,6 +588,7 @@ export default function TransaksiTabPage() {
       setFormError("");
       setSuccessMessage("");
 
+      // 1. Validasi dasar
       if (judul.trim().length < 2) {
         setFormError("Judul transaksi minimal 2 karakter.");
         return;
@@ -613,15 +614,44 @@ export default function TransaksiTabPage() {
         return;
       }
 
-      if (isUsingDanaDarurat && !konfirmasiGunakanDanaDarurat) {
-        setFormError(
-          "Kamu perlu mengonfirmasi penggunaan dana darurat terlebih dahulu."
-        );
+      // 2. Ambil data dompet mutakhir langsung dari list (Mencegah Stale State)
+      const selectedDompet = dompetList.find(
+        (item) => item.id === selectedDompetId
+      );
+
+      if (!selectedDompet) {
+        setFormError("Dompet yang dipilih tidak ditemukan. Segarkan data dan coba lagi.");
         return;
       }
 
+      // 3. Validasi saldo untuk pengeluaran (DOUBLE-GUARD LAPIS 1 - UI)
+      if (jenisTransaksi === "pengeluaran") {
+        const saldoSaatIni = selectedDompet?.saldo_saat_ini ?? 0;
+        if (jumlahValue > saldoSaatIni) {
+          setFormError(
+            "Saldo dompet tidak cukup untuk pengeluaran ini. Silakan transfer antar-dompet terlebih dahulu."
+          );
+          return;
+        }
+      }
+
+      // 4. Validasi khusus dana darurat
+      if (
+        jenisTransaksi === "pengeluaran" &&
+        selectedDompet?.jenis === "dana_darurat"
+      ) {
+        if (!konfirmasiGunakanDanaDarurat) {
+          setFormError(
+            "Kamu perlu mengonfirmasi penggunaan dana darurat terlebih dahulu."
+          );
+          return;
+        }
+      }
+
+      // 5. Set status submitting
       setIsSubmitting(true);
 
+      // 6. Eksekusi transaksi
       if (jenisTransaksi === "pemasukan") {
         await tambahPemasukanLokal(db, {
           dompetId: selectedDompetId,
@@ -631,7 +661,6 @@ export default function TransaksiTabPage() {
           jumlah: jumlahValue,
           tanggalTransaksi,
         });
-
         setSuccessMessage("Pemasukan berhasil dicatat.");
       } else {
         await tambahPengeluaranLokal(db, {
@@ -643,13 +672,13 @@ export default function TransaksiTabPage() {
           tanggalTransaksi,
           pakaiDanaDarurat: selectedDompet?.jenis === "dana_darurat",
         });
-
         setSuccessMessage("Pengeluaran berhasil dicatat.");
       }
 
+      // 7. Reset form & refresh
       resetFormAfterSubmit();
-
       await refreshTransaksiData();
+
     } catch (error) {
       console.log("handleSubmit transaksi error:", error);
       setFormError(
@@ -970,12 +999,9 @@ export default function TransaksiTabPage() {
         ) : null}
 
         {willBeNegative ? (
-          <View style={transaksiScreenStyles.warningWrap}>
-            <GuestModeNotice
-              title="Saldo dompet akan menjadi minus"
-              text="Aplikasi tetap mengizinkan penyimpanan supaya pencatatan tidak terhambat, tetapi kondisi ini akan memengaruhi evaluasi kesehatan keuangan dan batas belanja aman."
-            />
-          </View>
+          <Text style={transaksiScreenStyles.errorText}>
+            Saldo dompet tidak cukup untuk pengeluaran ini. Silakan transfer antar-dompet terlebih dahulu.
+          </Text>
         ) : null}
 
         {!!formError ? (
@@ -997,7 +1023,7 @@ export default function TransaksiTabPage() {
               : "Simpan pengeluaran"
           }
           style={transaksiScreenStyles.submitButton}
-          disabled={isSubmitting}
+          disabled={isSubmitting || willBeNegative} 
           onPress={handleSubmit}
         />
       </AppCard>

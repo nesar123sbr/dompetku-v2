@@ -1,3 +1,4 @@
+import { Platform, Alert } from 'react-native';
 import type { SQLiteDatabase } from "expo-sqlite";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Print from "expo-print";
@@ -587,9 +588,7 @@ async function assertSharingAvailable() {
 export async function exportLaporanBulananPdf(
   db: SQLiteDatabase,
   options?: ExportFormatOptions
-) {
-  await assertSharingAvailable();
-
+): Promise<string | null> {
   const laporan = await getLaporanBulanan(db, options?.bulan);
   const html = buildHtml(laporan);
 
@@ -598,41 +597,160 @@ export async function exportLaporanBulananPdf(
     base64: false,
   });
 
-  const outputUri = `${getSafeDirectory()}${getNamaFile(laporan, "pdf")}`;
+  if (Platform.OS !== 'android') {
+    await assertSharingAvailable();
+    await Sharing.shareAsync(uri, {
+      mimeType: "application/pdf",
+      dialogTitle: "Bagikan laporan PDF DompetKu",
+      UTI: "com.adobe.pdf",
+    });
+    return uri;
+  }
 
-  await FileSystem.copyAsync({
-    from: uri,
-    to: outputUri,
+  return new Promise((resolve, reject) => {
+    Alert.alert(
+      "Laporan PDF Siap",
+      "Apa yang ingin kamu lakukan dengan file ini?",
+      [
+        {
+          text: "📥 Simpan ke HP",
+          onPress: async () => {
+            try {
+              const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+              if (!permissions.granted) {
+                resolve(null);
+                return;
+              }
+              const outputUri = await FileSystem.StorageAccessFramework.createFileAsync(
+                permissions.directoryUri,
+                getNamaFile(laporan, "pdf"),
+                "application/pdf"
+              );
+              const fileContent = await FileSystem.readAsStringAsync(uri, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+              await FileSystem.writeAsStringAsync(outputUri, fileContent, {
+                encoding: FileSystem.EncodingType.Base64, 
+              });
+              resolve(outputUri);
+            } catch (error) {
+              console.log("Error Simpan PDF:", error);
+              reject(new Error("Gagal menyimpan PDF ke perangkat."));
+            }
+          },
+        },
+        {
+          text: "📤 Bagikan",
+          onPress: async () => {
+            try {
+              await assertSharingAvailable();
+              await Sharing.shareAsync(uri, {
+                mimeType: "application/pdf",
+                dialogTitle: "Bagikan laporan PDF DompetKu",
+              });
+              resolve(uri);
+            } catch (error) {
+              console.log("Error Bagikan PDF:", error);
+              reject(new Error("Gagal membagikan laporan PDF."));
+            }
+          },
+        },
+        {
+          text: "Batal",
+          style: "cancel",
+          onPress: () => resolve(null),
+        },
+      ],
+      // KUNCI PENYELAMAT BUG HANGING PROMISE DI SINI:
+      {
+        cancelable: true,
+        onDismiss: () => resolve(null),
+      }
+    );
   });
-
-  await Sharing.shareAsync(outputUri, {
-    mimeType: "application/pdf",
-    dialogTitle: "Bagikan laporan PDF DompetKu",
-    UTI: "com.adobe.pdf",
-  });
-
-  return outputUri;
 }
 
 export async function exportLaporanBulananCsv(
   db: SQLiteDatabase,
   options?: ExportFormatOptions
-) {
-  await assertSharingAvailable();
-
+): Promise<string | null> {
   const laporan = await getLaporanBulanan(db, options?.bulan);
   const csv = buildCsv(laporan);
-  const fileUri = `${getSafeDirectory()}${getNamaFile(laporan, "csv")}`;
 
-  await FileSystem.writeAsStringAsync(fileUri, csv, {
-    encoding: FileSystem.EncodingType.UTF8,
+  if (Platform.OS !== 'android') {
+    await assertSharingAvailable();
+    const fileUri = `${getSafeDirectory()}${getNamaFile(laporan, "csv")}`;
+    await FileSystem.writeAsStringAsync(fileUri, csv, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+    await Sharing.shareAsync(fileUri, {
+      mimeType: "text/csv",
+      dialogTitle: "Bagikan laporan CSV DompetKu",
+      UTI: "public.comma-separated-values-text",
+    });
+    return fileUri;
+  }
+
+  return new Promise((resolve, reject) => {
+    Alert.alert(
+      "Laporan CSV Siap",
+      "Apa yang ingin kamu lakukan dengan file spreadsheet ini?",
+      [
+        {
+          text: "📥 Simpan ke HP",
+          onPress: async () => {
+            try {
+              const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+              if (!permissions.granted) {
+                resolve(null);
+                return;
+              }
+              const outputUri = await FileSystem.StorageAccessFramework.createFileAsync(
+                permissions.directoryUri,
+                getNamaFile(laporan, "csv"),
+                "text/csv"
+              );
+              await FileSystem.writeAsStringAsync(outputUri, csv, {
+                encoding: FileSystem.EncodingType.UTF8, 
+              });
+              resolve(outputUri);
+            } catch (error) {
+              console.log("Error Simpan CSV:", error);
+              reject(new Error("Gagal menyimpan CSV ke perangkat.")); 
+            }
+          },
+        },
+        {
+          text: "📤 Bagikan",
+          onPress: async () => {
+            try {
+              await assertSharingAvailable();
+              const fileUri = `${getSafeDirectory()}${getNamaFile(laporan, "csv")}`;
+              await FileSystem.writeAsStringAsync(fileUri, csv, {
+                encoding: FileSystem.EncodingType.UTF8,
+              });
+              await Sharing.shareAsync(fileUri, {
+                mimeType: "text/csv",
+                dialogTitle: "Bagikan laporan CSV DompetKu",
+              });
+              resolve(fileUri);
+            } catch (error) {
+              console.log("Error Bagikan CSV:", error);
+              reject(new Error("Gagal membagikan laporan CSV."));
+            }
+          },
+        },
+        {
+          text: "Batal",
+          style: "cancel",
+          onPress: () => resolve(null),
+        },
+      ],
+      // KUNCI PENYELAMAT BUG HANGING PROMISE DI SINI:
+      {
+        cancelable: true,
+        onDismiss: () => resolve(null),
+      }
+    );
   });
-
-  await Sharing.shareAsync(fileUri, {
-    mimeType: "text/csv",
-    dialogTitle: "Bagikan laporan CSV DompetKu",
-    UTI: "public.comma-separated-values-text",
-  });
-
-  return fileUri;
 }

@@ -68,3 +68,56 @@ export async function getRingkasanDashboard(
     jumlahPengingatAktif: pengingatRow?.jumlah_pengingat_aktif ?? 0,
   };
 }
+
+// ============================================================
+// FUNGSI BARU: FILTER PERIODE DINAMIS (Level Dewa / Anti-Lag)
+// ============================================================
+
+export type FilterPeriodePayload = {
+  tahunBulan?: string | null;    // Contoh: "2026-06"
+  tanggalMulai?: string | null;  // Contoh: "2026-06-01"
+  tanggalSelesai?: string | null;// Contoh: "2026-06-30"
+};
+
+export async function getRingkasanFilterPeriode(
+  db: SQLiteDatabase,
+  payload: FilterPeriodePayload
+): Promise<{ totalPemasukan: number; totalPengeluaran: number }> {
+  let wherePemasukan = `WHERE is_deleted = 0`;
+  let wherePengeluaran = `WHERE is_deleted = 0`;
+  const params: Record<string, string> = {};
+
+  if (payload.tahunBulan) {
+    // Menggunakan LIKE agar query SQLite super cepat (ngebut) 
+    wherePemasukan += ` AND tanggal_transaksi LIKE $tahunBulan`;
+    wherePengeluaran += ` AND tanggal_transaksi LIKE $tahunBulan`;
+    params.$tahunBulan = `${payload.tahunBulan}%`;
+  } else {
+    // Mode rentang tanggal
+    if (payload.tanggalMulai) {
+      wherePemasukan += ` AND date(tanggal_transaksi) >= date($tanggalMulai)`;
+      wherePengeluaran += ` AND date(tanggal_transaksi) >= date($tanggalMulai)`;
+      params.$tanggalMulai = payload.tanggalMulai;
+    }
+    if (payload.tanggalSelesai) {
+      wherePemasukan += ` AND date(tanggal_transaksi) <= date($tanggalSelesai)`;
+      wherePengeluaran += ` AND date(tanggal_transaksi) <= date($tanggalSelesai)`;
+      params.$tanggalSelesai = payload.tanggalSelesai;
+    }
+  }
+
+  const pemasukanRow = await db.getFirstAsync<{ total: number | null }>(
+    `SELECT COALESCE(SUM(jumlah), 0) AS total FROM pemasukan ${wherePemasukan}`,
+    params
+  );
+
+  const pengeluaranRow = await db.getFirstAsync<{ total: number | null }>(
+    `SELECT COALESCE(SUM(jumlah), 0) AS total FROM pengeluaran ${wherePengeluaran}`,
+    params
+  );
+
+  return {
+    totalPemasukan: pemasukanRow?.total ?? 0,
+    totalPengeluaran: pengeluaranRow?.total ?? 0,
+  };
+}

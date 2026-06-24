@@ -188,8 +188,14 @@ export async function tambahPengeluaranLokal(
       throw new Error("Dompet pengeluaran tidak ditemukan atau tidak aktif.");
     }
 
+    if (payload.jumlah > dompet.saldo_saat_ini) {
+      throw new Error("Saldo dompet tidak cukup untuk pengeluaran ini.");
+    }
+
     const pakaiDanaDarurat =
       payload.pakaiDanaDarurat || dompet.jenis === "dana_darurat" ? 1 : 0;
+
+    
 
     await txn.runAsync(
       `
@@ -339,6 +345,21 @@ export async function hapusTransaksiLokalDanKembalikanSaldo(
       if (!row) {
         throw new Error("Transaksi pemasukan tidak ditemukan.");
       }
+
+      // ============================================================
+      // 🛡️ TAMBAHAN KEAMANAN: CEK SALDO SEBELUM MENGHAPUS PEMASUKAN
+      // ============================================================
+      const dompet = await txn.getFirstAsync<{ nama: string; saldo_saat_ini: number }>(
+        `SELECT nama, saldo_saat_ini FROM dompet WHERE id = $id LIMIT 1`,
+        { $id: row.dompet_id }
+      );
+
+      if (dompet && dompet.saldo_saat_ini < row.jumlah) {
+        throw new Error(
+          `Tidak bisa dihapus! Uang dari pemasukan ini sudah terpakai. Saldo dompet "${dompet.nama}" tidak cukup.`
+        );
+      }
+      // ============================================================
 
       await txn.runAsync(
         `
@@ -505,7 +526,60 @@ export async function ubahTransaksiLokalDanSesuaikanSaldo(
       throw new Error("Dompet tujuan edit tidak ditemukan atau tidak aktif.");
     }
 
+    // ============================================================
+    // VALIDASI SALDO UNTUK EDIT PENGELUARAN (FIX BUG)
+    // ============================================================
+    if (payload.jenisTransaksi === "pengeluaran") {
+      // Hitung saldo yang tersedia setelah pembatalan transaksi lama
+      let saldoTersedia = dompetBaru.saldo_saat_ini;
+
+      // Jika dompet tujuan SAMA dengan dompet asal, saldo lama akan dikembalikan dulu
+      if (dompetBaru.id === old.dompet_id) {
+        saldoTersedia += old.jumlah;
+      }
+
+      // Tolak jika jumlah baru > saldo yang tersedia
+      if (payload.jumlah > saldoTersedia) {
+        throw new Error(
+          `Saldo tidak cukup! Maksimal pengeluaran untuk dompet ini adalah Rp ${saldoTersedia.toLocaleString("id-ID")}.`
+        );
+      }
+    }
+    // ============================================================
+
     if (payload.jenisTransaksi === "pemasukan") {
+
+      // ============================================================
+      // 🛡️ VALIDASI ANTI-SALDO MINUS UNTUK EDIT PEMASUKAN (LEVEL DEWA)
+      // ============================================================
+      if (payload.dompetId === old.dompet_id) {
+        // Kasus 1: Dompet SAMA, nominal diperkecil
+        const saldoSimulasi = dompetBaru.saldo_saat_ini - old.jumlah + payload.jumlah;
+        if (saldoSimulasi < 0) {
+          throw new Error(
+            `Nominal terlalu kecil! Saldo dompet akan menjadi minus (Rp ${saldoSimulasi.toLocaleString("id-ID")}).`
+          );
+        }
+      } else {
+        // Kasus 2: Pemasukan dipindah ke dompet LAIN.
+        const dompetLama = await txn.getFirstAsync<{ nama: string; saldo_saat_ini: number }>(
+          `SELECT nama, saldo_saat_ini FROM dompet WHERE id = $id LIMIT 1`,
+          { $id: old.dompet_id }
+        );
+
+        if (!dompetLama) {
+          throw new Error("Dompet asal tidak ditemukan di database.");
+        }
+
+        if (dompetLama.saldo_saat_ini < old.jumlah) {
+          throw new Error(
+            `Uang sudah terpakai! Saldo dompet asal "${dompetLama.nama}" tidak cukup jika transaksi ini dipindah.`
+          );
+        }
+      }
+      // ============================================================
+
+
       await txn.runAsync(
         `
           UPDATE dompet

@@ -14,6 +14,7 @@ import {
 import {
   getPreviewPengingatDashboard,
   getRingkasanDashboard,
+  getRingkasanFilterPeriode,
   type PengingatTagihanListItem,
   type RingkasanDashboard,
 } from "@/database";
@@ -265,14 +266,27 @@ export default function DashboardTabPage() {
         try {
           setIsLoading(true);
 
-          const [ringkasanResult, previewResult] = await Promise.all([
+          // 1. Dapatkan string Bulan Ini dengan presisi (Format YYYY-MM)
+          const now = new Date();
+          const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+          // 2. Tembak database secara paralel
+          const [ringkasanAllTime, ringkasanBulanIni, previewResult] = await Promise.all([
             getRingkasanDashboard(db),
+            getRingkasanFilterPeriode(db, { tahunBulan: currentMonth }),
             getPreviewPengingatDashboard(db, 3),
           ]);
 
           if (!isActive) return;
 
-          setRingkasan(ringkasanResult);
+          // 3. Gabungkan: total saldo/darurat dari all-time, tapi pemasukan/pengeluaran dari bulan ini
+          const ringkasanMerged = {
+            ...ringkasanAllTime,
+            totalPemasukan: ringkasanBulanIni.totalPemasukan,
+            totalPengeluaran: ringkasanBulanIni.totalPengeluaran,
+          };
+
+          setRingkasan(ringkasanMerged);
           setPreviewPengingat(previewResult);
         } catch (error) {
           console.log("loadDashboard error:", error);

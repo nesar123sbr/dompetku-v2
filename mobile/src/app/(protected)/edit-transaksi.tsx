@@ -127,6 +127,32 @@ export default function EditTransaksiPage() {
     return saldoSebelum - jumlahValue;
   }, [jenisTransaksi, jumlahValue, saldoSebelum, selectedDompet]);
 
+  // --- VALIDASI REAL-TIME UNTUK SALDO (PEMASUKAN & PENGELUARAN) ---
+  const errorSaldoRealtime = useMemo(() => {
+    if (!detail) return "";
+
+    // 1. Cek jika pemasukan dipindah dompet: apakah dompet asal bakal minus?
+    if (jenisTransaksi === "pemasukan" && selectedDompetId && selectedDompetId !== detail.dompet_id) {
+      const dompetLama = dompetList.find((d) => d.id === detail.dompet_id);
+      if (dompetLama && dompetLama.saldo_saat_ini < detail.jumlah) {
+        return `Uang terpakai! Saldo asal (${dompetLama.nama}) tak cukup.`;
+      }
+    }
+
+    // 2. Cek jika kalkulasi saldo sesudah transaksi menghasilkan nilai minus
+    if (saldoSesudah < 0) {
+      if (jenisTransaksi === "pengeluaran") {
+        return `Saldo tidak cukup! Maksimal pengeluaran: ${formatRupiah(saldoSebelum)}`;
+      } else {
+        // Pemasukan: beri tahu batas terkecil nominal yang diizinkan
+        const minimalPemasukan = -saldoSebelum;
+        return `Nominal terlalu kecil! Minimal pemasukan: ${formatRupiah(minimalPemasukan)}`;
+      }
+    }
+
+    return "";
+  }, [jenisTransaksi, saldoSesudah, saldoSebelum, detail, selectedDompetId, dompetList]);
+
   function clearFeedback() {
     setFormError("");
     setSuccessMessage("");
@@ -306,6 +332,12 @@ export default function EditTransaksiPage() {
       return;
     }
 
+        // --- CEK ERROR REAL-TIME SEBELUM SIMPAN (GEMBOK EKSTRA) ---
+    if (errorSaldoRealtime) {
+      setFormError(errorSaldoRealtime);
+      return;
+    }
+
     Alert.alert(
       "Simpan perubahan?",
       "Saldo dompet akan disesuaikan ulang berdasarkan data transaksi yang baru.",
@@ -383,6 +415,7 @@ export default function EditTransaksiPage() {
             clearFeedback();
           }}
           keyboardType="number-pad"
+          errorText={errorSaldoRealtime}
           helperText={
             jumlahInput
               ? `Preview: ${formatRupiah(jumlahValue)}`
@@ -505,7 +538,7 @@ export default function EditTransaksiPage() {
         <AppButton
           title={isSubmitting ? "Menyimpan..." : "Simpan perubahan"}
           style={editTransaksiScreenStyles.button}
-          disabled={isSubmitting}
+          disabled={isSubmitting || Boolean(errorSaldoRealtime)}
           onPress={handleSave}
         />
       </AppCard>
