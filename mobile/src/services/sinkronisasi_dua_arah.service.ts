@@ -45,7 +45,6 @@ function getSupabaseClientOrThrow() {
       "Supabase belum dikonfigurasi. Isi .env dan pastikan project tidak sedang pause."
     );
   }
-
   return supabase;
 }
 
@@ -53,13 +52,13 @@ function toBool(value: number) {
   return Boolean(value);
 }
 
+// PERUBAHAN 1: Paksa menjadi boolean murni (true/false) agar Postgres tidak rewel
 function toDeletedFlag(value: number | null | undefined) {
-  return value ? 1 : 0;
+  return Boolean(value); 
 }
 
 function getMs(value?: string | null) {
   if (!value) return 0;
-
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? ms : 0;
 }
@@ -69,16 +68,6 @@ function localMenang(
   cloudUpdatedAt?: string | null
 ) {
   return getMs(localUpdatedAt) >= getMs(cloudUpdatedAt);
-}
-
-function chunkArray<T>(items: T[], size = 200) {
-  const result: T[][] = [];
-
-  for (let index = 0; index < items.length; index += size) {
-    result.push(items.slice(index, index + size));
-  }
-
-  return result;
 }
 
 function createEmptyRingkasan(): RingkasanArahSync {
@@ -108,53 +97,44 @@ function isCloudBundleKosong(bundle: BundleSinkronisasiCloud) {
   );
 }
 
-async function upsertInChunks(
-  tableName: string,
-  rows: Record<string, unknown>[],
-  onConflict: string
-) {
-  const client = getSupabaseClientOrThrow();
-
-  if (rows.length === 0) {
-    return 0;
-  }
-
-  const chunks = chunkArray(rows, 200);
-
-  for (const chunk of chunks) {
-    const { error } = await client
-      .from(tableName)
-      .upsert(chunk, { onConflict });
-
-    if (error) {
-      throw error;
-    }
-  }
-
-  return rows.length;
-}
-
 async function fetchCloudTable<T>(
   tableName: string,
   sinceIso?: string | null
 ): Promise<T[]> {
   const client = getSupabaseClientOrThrow();
+  let allData: T[] = [];
+  let from = 0;
+  const step = 1000;
 
-  let query = client.from(tableName).select("*").order("updated_at", {
-    ascending: true,
-  });
+  while (true) {
+    let query = client
+      .from(tableName)
+      .select("*")
+      .order("updated_at", { ascending: true })
+      .order("id_lokal", { ascending: true }) // ✅ Perbaikan kritis untuk paginasi deterministik
+      .range(from, from + step - 1);
 
-  if (sinceIso) {
-    query = query.gt("updated_at", sinceIso);
+    if (sinceIso) {
+      query = query.gt("updated_at", sinceIso);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    const currentData = (data ?? []) as T[];
+    allData = allData.concat(currentData);
+
+    if (currentData.length < step) {
+      break;
+    }
+
+    from += step;
   }
 
-  const { data, error } = await query;
-
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []) as T[];
+  return allData;
 }
 
 async function fetchCloudBundleSince(
@@ -171,25 +151,13 @@ async function fetchCloudBundleSince(
     anggaranBulanan,
   ] = await Promise.all([
     fetchCloudTable<CloudDompetRow>("dompet", sinceIso),
-    fetchCloudTable<CloudKategoriPemasukanRow>(
-      "kategori_pemasukan",
-      sinceIso
-    ),
-    fetchCloudTable<CloudKategoriPengeluaranRow>(
-      "kategori_pengeluaran",
-      sinceIso
-    ),
+    fetchCloudTable<CloudKategoriPemasukanRow>("kategori_pemasukan", sinceIso),
+    fetchCloudTable<CloudKategoriPengeluaranRow>("kategori_pengeluaran", sinceIso),
     fetchCloudTable<CloudPemasukanRow>("pemasukan", sinceIso),
     fetchCloudTable<CloudPengeluaranRow>("pengeluaran", sinceIso),
-    fetchCloudTable<CloudPengingatTagihanRow>(
-      "pengingat_tagihan",
-      sinceIso
-    ),
+    fetchCloudTable<CloudPengingatTagihanRow>("pengingat_tagihan", sinceIso),
     fetchCloudTable<CloudTransferDompetRow>("transfer_dompet", sinceIso),
-    fetchCloudTable<CloudAnggaranBulananRow>(
-      "anggaran_bulanan",
-      sinceIso
-    ),
+    fetchCloudTable<CloudAnggaranBulananRow>("anggaran_bulanan", sinceIso),
   ]);
 
   return {
@@ -216,9 +184,7 @@ function filterLocalBundleAgainstCloud(
 ): BundleSinkronisasiLokal {
   const dompetMap = buildCloudUpdatedMap(cloud.dompet);
   const kategoriPemasukanMap = buildCloudUpdatedMap(cloud.kategoriPemasukan);
-  const kategoriPengeluaranMap = buildCloudUpdatedMap(
-    cloud.kategoriPengeluaran
-  );
+  const kategoriPengeluaranMap = buildCloudUpdatedMap(cloud.kategoriPengeluaran);
   const pemasukanMap = buildCloudUpdatedMap(cloud.pemasukan);
   const pengeluaranMap = buildCloudUpdatedMap(cloud.pengeluaran);
   const pengingatMap = buildCloudUpdatedMap(cloud.pengingatTagihan);
@@ -229,31 +195,24 @@ function filterLocalBundleAgainstCloud(
     dompet: local.dompet.filter((item) =>
       localMenang(item.updated_at, dompetMap.get(item.id))
     ),
-
     kategoriPemasukan: local.kategoriPemasukan.filter((item) =>
       localMenang(item.updated_at, kategoriPemasukanMap.get(item.id))
     ),
-
     kategoriPengeluaran: local.kategoriPengeluaran.filter((item) =>
       localMenang(item.updated_at, kategoriPengeluaranMap.get(item.id))
     ),
-
     pemasukan: local.pemasukan.filter((item) =>
       localMenang(item.updated_at, pemasukanMap.get(item.id))
     ),
-
     pengeluaran: local.pengeluaran.filter((item) =>
       localMenang(item.updated_at, pengeluaranMap.get(item.id))
     ),
-
     pengingatTagihan: local.pengingatTagihan.filter((item) =>
       localMenang(item.updated_at, pengingatMap.get(item.id))
     ),
-
     transferDompet: local.transferDompet.filter((item) =>
       localMenang(item.updated_at, transferMap.get(item.id))
     ),
-
     anggaranBulanan: local.anggaranBulanan.filter((item) =>
       localMenang(item.updated_at, anggaranMap.get(item.id))
     ),
@@ -279,30 +238,13 @@ async function pushLocalBundleKeCloud(
   bundle: BundleSinkronisasiLokal
 ): Promise<RingkasanArahSync> {
   const client = getSupabaseClientOrThrow();
-  const penggunaId = user.id;
-  const result = createEmptyRingkasan();
 
-  const { error: profilError } = await client.from("profil_pengguna").upsert(
-    {
-      id: penggunaId,
+  const payload = {
+    profilPengguna: {
       email: user.email ?? null,
       nama_lengkap: getNamaLengkapDariUser(user),
     },
-    {
-      onConflict: "id",
-    }
-  );
-
-  if (profilError) {
-    throw profilError;
-  }
-
-  result.profilPengguna = 1;
-
-  result.dompet = await upsertInChunks(
-    "dompet",
-    bundle.dompet.map((item) => ({
-      pengguna_id: penggunaId,
+    dompet: bundle.dompet.map((item) => ({
       id_lokal: item.id,
       nama: item.nama,
       jenis: item.jenis,
@@ -314,13 +256,7 @@ async function pushLocalBundleKeCloud(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  result.kategoriPemasukan = await upsertInChunks(
-    "kategori_pemasukan",
-    bundle.kategoriPemasukan.map((item) => ({
-      pengguna_id: penggunaId,
+    kategoriPemasukan: bundle.kategoriPemasukan.map((item) => ({
       id_lokal: item.id,
       nama: item.nama,
       ikon: item.ikon,
@@ -331,13 +267,7 @@ async function pushLocalBundleKeCloud(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  result.kategoriPengeluaran = await upsertInChunks(
-    "kategori_pengeluaran",
-    bundle.kategoriPengeluaran.map((item) => ({
-      pengguna_id: penggunaId,
+    kategoriPengeluaran: bundle.kategoriPengeluaran.map((item) => ({
       id_lokal: item.id,
       nama: item.nama,
       kelompok: item.kelompok,
@@ -349,13 +279,7 @@ async function pushLocalBundleKeCloud(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  result.pemasukan = await upsertInChunks(
-    "pemasukan",
-    bundle.pemasukan.map((item) => ({
-      pengguna_id: penggunaId,
+    pemasukan: bundle.pemasukan.map((item) => ({
       id_lokal: item.id,
       dompet_id_lokal: item.dompet_id,
       kategori_id_lokal: item.kategori_id,
@@ -368,13 +292,7 @@ async function pushLocalBundleKeCloud(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  result.pengeluaran = await upsertInChunks(
-    "pengeluaran",
-    bundle.pengeluaran.map((item) => ({
-      pengguna_id: penggunaId,
+    pengeluaran: bundle.pengeluaran.map((item) => ({
       id_lokal: item.id,
       dompet_id_lokal: item.dompet_id,
       kategori_id_lokal: item.kategori_id,
@@ -388,13 +306,7 @@ async function pushLocalBundleKeCloud(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  result.pengingatTagihan = await upsertInChunks(
-    "pengingat_tagihan",
-    bundle.pengingatTagihan.map((item) => ({
-      pengguna_id: penggunaId,
+    pengingatTagihan: bundle.pengingatTagihan.map((item) => ({
       id_lokal: item.id,
       judul: item.judul,
       catatan: item.catatan,
@@ -409,13 +321,7 @@ async function pushLocalBundleKeCloud(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  result.transferDompet = await upsertInChunks(
-    "transfer_dompet",
-    bundle.transferDompet.map((item) => ({
-      pengguna_id: penggunaId,
+    transferDompet: bundle.transferDompet.map((item) => ({
       id_lokal: item.id,
       dompet_sumber_id_lokal: item.dompet_sumber_id,
       dompet_tujuan_id_lokal: item.dompet_tujuan_id,
@@ -426,13 +332,7 @@ async function pushLocalBundleKeCloud(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  result.anggaranBulanan = await upsertInChunks(
-    "anggaran_bulanan",
-    bundle.anggaranBulanan.map((item) => ({
-      pengguna_id: penggunaId,
+    anggaranBulanan: bundle.anggaranBulanan.map((item) => ({
       id_lokal: item.id,
       bulan: item.bulan,
       nama: item.nama,
@@ -443,8 +343,26 @@ async function pushLocalBundleKeCloud(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
+  };
+
+  const { error } = await client.rpc("sync_bundle", {
+    payload: payload,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const result = createEmptyRingkasan();
+  result.profilPengguna = 1;
+  result.dompet = bundle.dompet.length;
+  result.kategoriPemasukan = bundle.kategoriPemasukan.length;
+  result.kategoriPengeluaran = bundle.kategoriPengeluaran.length;
+  result.pemasukan = bundle.pemasukan.length;
+  result.pengeluaran = bundle.pengeluaran.length;
+  result.pengingatTagihan = bundle.pengingatTagihan.length;
+  result.transferDompet = bundle.transferDompet.length;
+  result.anggaranBulanan = bundle.anggaranBulanan.length;
 
   return result;
 }
@@ -463,35 +381,30 @@ function hitungPull(bundle: BundleSinkronisasiCloud): RingkasanArahSync {
   };
 }
 
+// PERUBAHAN 2: Fungsi X-Ray untuk mengekspos error mentah ke layar
 function toFriendlySyncError(error: unknown) {
-  if (error instanceof Error) {
-    const lower = error.message.toLowerCase();
+  // ✅ Perbaikan kritis: cek tipe data sebelum mengakses properti
+  const errObj = typeof error === 'object' && error !== null ? (error as Record<string, any>) : {};
+  const msg = errObj?.message || errObj?.error_description || "";
 
-    if (
-      (lower.includes("relation") && lower.includes("does not exist")) ||
-      lower.includes("could not find the table")
-    ) {
-      return new Error(
-        "Tabel cloud DompetKu di Supabase belum dibuat. Buka SQL Editor Supabase, jalankan schema database DompetKu, lalu coba sinkronisasi lagi."
-      );
+  if (msg) {
+    if (__DEV__) {
+      return new Error(`[DEV] DB Error: ${msg} | Details: ${errObj?.details || "Tidak ada detail"}`);
     }
-
-    if (lower.includes("row-level security")) {
-      return new Error(
-        "Aturan keamanan cloud belum cocok. Jalankan SQL schema lengkap, termasuk policy RLS."
-      );
-    }
-
-    if (lower.includes("project paused") || lower.includes("540")) {
-      return new Error(
-        "Project Supabase sedang pause. Unpause dulu dari dashboard Supabase."
-      );
-    }
-
-    return error;
+    return new Error("Terjadi kendala saat menyinkronkan data. Silakan coba beberapa saat lagi.");
   }
 
-  return new Error("Sinkronisasi cloud gagal. Coba lagi.");
+  if (error instanceof Error) {
+    if (__DEV__) {
+      return error;
+    }
+    return new Error("Terjadi kendala pada sistem. Sinkronisasi dibatalkan.");
+  }
+
+  if (__DEV__) {
+    return new Error("Error tak dikenal: " + JSON.stringify(error));
+  }
+  return new Error("Kendala jaringan atau sistem. Gagal menyinkronkan data.");
 }
 
 export async function sinkronisasiCloudSekarang(

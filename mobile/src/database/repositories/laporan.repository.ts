@@ -33,6 +33,12 @@ export async function getLaporanBulanan(
   db: SQLiteDatabase,
   bulan = getBulanIni()
 ): Promise<LaporanBulanan> {
+  const [year, monthIndex] = bulan.split("-").map(Number);
+  const lastDay = new Date(year, monthIndex, 0).getDate();
+
+  const tanggalMulai = `${bulan}-01`;
+  const tanggalSelesai = `${bulan}-${String(lastDay).padStart(2, "0")}`;
+
   const [pemasukanTotal, pengeluaranTotal, pemasukanRows, pengeluaranRows] =
     await Promise.all([
       db.getFirstAsync<TotalRow>(
@@ -40,18 +46,18 @@ export async function getLaporanBulanan(
           SELECT COALESCE(SUM(jumlah), 0) AS total
           FROM pemasukan
           WHERE is_deleted = 0
-            AND strftime('%Y-%m', tanggal_transaksi) = $bulan
+            AND tanggal_transaksi >= $mulai AND tanggal_transaksi <= $selesai
         `,
-        { $bulan: bulan }
+        { $mulai: tanggalMulai, $selesai: tanggalSelesai }
       ),
       db.getFirstAsync<TotalRow>(
         `
           SELECT COALESCE(SUM(jumlah), 0) AS total
           FROM pengeluaran
           WHERE is_deleted = 0
-            AND strftime('%Y-%m', tanggal_transaksi) = $bulan
+            AND tanggal_transaksi >= $mulai AND tanggal_transaksi <= $selesai
         `,
-        { $bulan: bulan }
+        { $mulai: tanggalMulai, $selesai: tanggalSelesai }
       ),
       db.getAllAsync<LaporanTransaksiRow>(
         `
@@ -67,9 +73,9 @@ export async function getLaporanBulanan(
           LEFT JOIN kategori_pemasukan kp ON kp.id = p.kategori_id
           LEFT JOIN dompet d ON d.id = p.dompet_id
           WHERE p.is_deleted = 0
-            AND strftime('%Y-%m', p.tanggal_transaksi) = $bulan
+            AND p.tanggal_transaksi >= $mulai AND p.tanggal_transaksi <= $selesai
         `,
-        { $bulan: bulan }
+        { $mulai: tanggalMulai, $selesai: tanggalSelesai }
       ),
       db.getAllAsync<LaporanTransaksiRow>(
         `
@@ -85,9 +91,9 @@ export async function getLaporanBulanan(
           LEFT JOIN kategori_pengeluaran kg ON kg.id = p.kategori_id
           LEFT JOIN dompet d ON d.id = p.dompet_id
           WHERE p.is_deleted = 0
-            AND strftime('%Y-%m', p.tanggal_transaksi) = $bulan
+            AND p.tanggal_transaksi >= $mulai AND p.tanggal_transaksi <= $selesai
         `,
-        { $bulan: bulan }
+        { $mulai: tanggalMulai, $selesai: tanggalSelesai }
       ),
     ]);
 

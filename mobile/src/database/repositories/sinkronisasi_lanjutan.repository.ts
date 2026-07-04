@@ -162,7 +162,7 @@ export type CloudPemasukanRow = {
   jumlah: number;
   tanggal_transaksi: string;
   sumber_data: string;
-  is_deleted: number | null;
+  is_deleted: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -177,7 +177,7 @@ export type CloudPengeluaranRow = {
   tanggal_transaksi: string;
   pakai_dana_darurat: boolean;
   sumber_data: string;
-  is_deleted: number | null;
+  is_deleted: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -428,427 +428,248 @@ export async function terapkanBundleCloudKeSQLite(
   db: SQLiteDatabase,
   bundle: BundleSinkronisasiCloud
 ) {
+  // ABSOLUT: 1 Transaksi Mutlak dengan Prepared Statements untuk C++ Binding Cepat
   await db.withExclusiveTransactionAsync(async (txn) => {
-    for (const item of bundle.dompet) {
-      await txn.runAsync(
-        `
-          INSERT INTO dompet (
-            id,
-            nama,
-            jenis,
-            tipe_dompet,
-            saldo_saat_ini,
-            is_default,
-            is_aktif,
-            created_at,
-            updated_at
-          ) VALUES (
-            $id,
-            $nama,
-            $jenis,
-            $tipe_dompet,
-            $saldo_saat_ini,
-            $is_default,
-            $is_aktif,
-            $created_at,
-            $updated_at
-          )
-          ON CONFLICT(id) DO UPDATE SET
-            nama = excluded.nama,
-            jenis = excluded.jenis,
-            tipe_dompet = excluded.tipe_dompet,
-            saldo_saat_ini = excluded.saldo_saat_ini,
-            is_default = excluded.is_default,
-            is_aktif = excluded.is_aktif,
-            created_at = excluded.created_at,
-            updated_at = excluded.updated_at
-        `,
-        {
-          $id: item.id_lokal,
-          $nama: item.nama,
-          $jenis: item.jenis,
-          $tipe_dompet: item.tipe_dompet ?? item.jenis,
-          $saldo_saat_ini: item.saldo_saat_ini,
-          $is_default: item.is_default ? 1 : 0,
-          $is_aktif: item.is_aktif ? 1 : 0,
-          $created_at: item.created_at,
-          $updated_at: item.updated_at,
-        }
+    
+    // 1. Dompet
+    if (bundle.dompet.length > 0) {
+      const stmt = await txn.prepareAsync(
+        `INSERT INTO dompet (id, nama, jenis, tipe_dompet, saldo_saat_ini, is_default, is_aktif, created_at, updated_at) 
+         VALUES ($id, $nama, $jenis, $tipe_dompet, $saldo, $is_default, $is_aktif, $created_at, $updated_at)
+         ON CONFLICT(id) DO UPDATE SET 
+           nama = excluded.nama, jenis = excluded.jenis, tipe_dompet = excluded.tipe_dompet, 
+           saldo_saat_ini = excluded.saldo_saat_ini, is_default = excluded.is_default, 
+           is_aktif = excluded.is_aktif, created_at = excluded.created_at, updated_at = excluded.updated_at`
       );
+      try {
+        for (const item of bundle.dompet) {
+          await stmt.executeAsync({
+            $id: item.id_lokal,
+            $nama: item.nama,
+            $jenis: item.jenis,
+            $tipe_dompet: item.tipe_dompet ?? item.jenis,
+            $saldo: item.saldo_saat_ini,
+            $is_default: item.is_default ? 1 : 0,
+            $is_aktif: item.is_aktif ? 1 : 0,
+            $created_at: item.created_at,
+            $updated_at: item.updated_at,
+          });
+        }
+      } finally {
+        await stmt.finalizeAsync();
+      }
     }
 
-    for (const item of bundle.kategoriPemasukan) {
-      await txn.runAsync(
-        `
-          INSERT INTO kategori_pemasukan (
-            id,
-            nama,
-            ikon,
-            warna,
-            urutan,
-            is_bawaan,
-            is_aktif,
-            created_at,
-            updated_at
-          ) VALUES (
-            $id,
-            $nama,
-            $ikon,
-            $warna,
-            $urutan,
-            $is_bawaan,
-            $is_aktif,
-            $created_at,
-            $updated_at
-          )
-          ON CONFLICT(id) DO UPDATE SET
-            nama = excluded.nama,
-            ikon = excluded.ikon,
-            warna = excluded.warna,
-            urutan = excluded.urutan,
-            is_bawaan = excluded.is_bawaan,
-            is_aktif = excluded.is_aktif,
-            created_at = excluded.created_at,
-            updated_at = excluded.updated_at
-        `,
-        {
-          $id: item.id_lokal,
-          $nama: item.nama,
-          $ikon: item.ikon,
-          $warna: item.warna,
-          $urutan: item.urutan,
-          $is_bawaan: item.is_bawaan ? 1 : 0,
-          $is_aktif: item.is_aktif ? 1 : 0,
-          $created_at: item.created_at,
-          $updated_at: item.updated_at,
-        }
+    // 2. Kategori Pemasukan
+    if (bundle.kategoriPemasukan.length > 0) {
+      const stmt = await txn.prepareAsync(
+        `INSERT INTO kategori_pemasukan (id, nama, ikon, warna, urutan, is_bawaan, is_aktif, created_at, updated_at) 
+         VALUES ($id, $nama, $ikon, $warna, $urutan, $is_bawaan, $is_aktif, $created_at, $updated_at)
+         ON CONFLICT(id) DO UPDATE SET 
+           nama = excluded.nama, ikon = excluded.ikon, warna = excluded.warna, urutan = excluded.urutan, 
+           is_bawaan = excluded.is_bawaan, is_aktif = excluded.is_aktif, created_at = excluded.created_at, updated_at = excluded.updated_at`
       );
+      try {
+        for (const item of bundle.kategoriPemasukan) {
+          await stmt.executeAsync({
+            $id: item.id_lokal,
+            $nama: item.nama,
+            $ikon: item.ikon,
+            $warna: item.warna,
+            $urutan: item.urutan,
+            $is_bawaan: item.is_bawaan ? 1 : 0,
+            $is_aktif: item.is_aktif ? 1 : 0,
+            $created_at: item.created_at,
+            $updated_at: item.updated_at,
+          });
+        }
+      } finally {
+        await stmt.finalizeAsync();
+      }
     }
 
-    for (const item of bundle.kategoriPengeluaran) {
-      await txn.runAsync(
-        `
-          INSERT INTO kategori_pengeluaran (
-            id,
-            nama,
-            kelompok,
-            ikon,
-            warna,
-            urutan,
-            is_bawaan,
-            is_aktif,
-            created_at,
-            updated_at
-          ) VALUES (
-            $id,
-            $nama,
-            $kelompok,
-            $ikon,
-            $warna,
-            $urutan,
-            $is_bawaan,
-            $is_aktif,
-            $created_at,
-            $updated_at
-          )
-          ON CONFLICT(id) DO UPDATE SET
-            nama = excluded.nama,
-            kelompok = excluded.kelompok,
-            ikon = excluded.ikon,
-            warna = excluded.warna,
-            urutan = excluded.urutan,
-            is_bawaan = excluded.is_bawaan,
-            is_aktif = excluded.is_aktif,
-            created_at = excluded.created_at,
-            updated_at = excluded.updated_at
-        `,
-        {
-          $id: item.id_lokal,
-          $nama: item.nama,
-          $kelompok: item.kelompok,
-          $ikon: item.ikon,
-          $warna: item.warna,
-          $urutan: item.urutan,
-          $is_bawaan: item.is_bawaan ? 1 : 0,
-          $is_aktif: item.is_aktif ? 1 : 0,
-          $created_at: item.created_at,
-          $updated_at: item.updated_at,
-        }
+    // 3. Kategori Pengeluaran
+    if (bundle.kategoriPengeluaran.length > 0) {
+      const stmt = await txn.prepareAsync(
+        `INSERT INTO kategori_pengeluaran (id, nama, kelompok, ikon, warna, urutan, is_bawaan, is_aktif, created_at, updated_at) 
+         VALUES ($id, $nama, $kelompok, $ikon, $warna, $urutan, $is_bawaan, $is_aktif, $created_at, $updated_at)
+         ON CONFLICT(id) DO UPDATE SET 
+           nama = excluded.nama, kelompok = excluded.kelompok, ikon = excluded.ikon, warna = excluded.warna, 
+           urutan = excluded.urutan, is_bawaan = excluded.is_bawaan, is_aktif = excluded.is_aktif, created_at = excluded.created_at, updated_at = excluded.updated_at`
       );
+      try {
+        for (const item of bundle.kategoriPengeluaran) {
+          await stmt.executeAsync({
+            $id: item.id_lokal,
+            $nama: item.nama,
+            $kelompok: item.kelompok,
+            $ikon: item.ikon,
+            $warna: item.warna,
+            $urutan: item.urutan,
+            $is_bawaan: item.is_bawaan ? 1 : 0,
+            $is_aktif: item.is_aktif ? 1 : 0,
+            $created_at: item.created_at,
+            $updated_at: item.updated_at,
+          });
+        }
+      } finally {
+        await stmt.finalizeAsync();
+      }
     }
 
-    for (const item of bundle.pemasukan) {
-      await txn.runAsync(
-        `
-          INSERT INTO pemasukan (
-            id,
-            dompet_id,
-            kategori_id,
-            judul,
-            catatan,
-            jumlah,
-            tanggal_transaksi,
-            sumber_data,
-            is_deleted,
-            created_at,
-            updated_at
-          ) VALUES (
-            $id,
-            $dompet_id,
-            $kategori_id,
-            $judul,
-            $catatan,
-            $jumlah,
-            $tanggal_transaksi,
-            $sumber_data,
-            $is_deleted,
-            $created_at,
-            $updated_at
-          )
-          ON CONFLICT(id) DO UPDATE SET
-            dompet_id = excluded.dompet_id,
-            kategori_id = excluded.kategori_id,
-            judul = excluded.judul,
-            catatan = excluded.catatan,
-            jumlah = excluded.jumlah,
-            tanggal_transaksi = excluded.tanggal_transaksi,
-            sumber_data = excluded.sumber_data,
-            is_deleted = excluded.is_deleted,
-            created_at = excluded.created_at,
-            updated_at = excluded.updated_at
-        `,
-        {
-          $id: item.id_lokal,
-          $dompet_id: item.dompet_id_lokal,
-          $kategori_id: item.kategori_id_lokal,
-          $judul: item.judul,
-          $catatan: item.catatan,
-          $jumlah: item.jumlah,
-          $tanggal_transaksi: item.tanggal_transaksi,
-          $sumber_data: item.sumber_data ?? "lokal",
-          $is_deleted: item.is_deleted ? 1 : 0,
-          $created_at: item.created_at,
-          $updated_at: item.updated_at,
-        }
+    // 4. Pemasukan
+    if (bundle.pemasukan.length > 0) {
+      const stmt = await txn.prepareAsync(
+        `INSERT INTO pemasukan (id, dompet_id, kategori_id, judul, catatan, jumlah, tanggal_transaksi, sumber_data, is_deleted, created_at, updated_at) 
+         VALUES ($id, $dompet_id, $kategori_id, $judul, $catatan, $jumlah, $tanggal, $sumber, $is_deleted, $created_at, $updated_at)
+         ON CONFLICT(id) DO UPDATE SET 
+           dompet_id = excluded.dompet_id, kategori_id = excluded.kategori_id, judul = excluded.judul, 
+           catatan = excluded.catatan, jumlah = excluded.jumlah, tanggal_transaksi = excluded.tanggal_transaksi, 
+           sumber_data = excluded.sumber_data, is_deleted = excluded.is_deleted, created_at = excluded.created_at, updated_at = excluded.updated_at`
       );
+      try {
+        for (const item of bundle.pemasukan) {
+          await stmt.executeAsync({
+            $id: item.id_lokal,
+            $dompet_id: item.dompet_id_lokal,
+            $kategori_id: item.kategori_id_lokal,
+            $judul: item.judul,
+            $catatan: item.catatan,
+            $jumlah: item.jumlah,
+            $tanggal: item.tanggal_transaksi,
+            $sumber: item.sumber_data ?? "lokal",
+            $is_deleted: item.is_deleted ? 1 : 0,
+            $created_at: item.created_at,
+            $updated_at: item.updated_at,
+          });
+        }
+      } finally {
+        await stmt.finalizeAsync();
+      }
     }
 
-    for (const item of bundle.pengeluaran) {
-      await txn.runAsync(
-        `
-          INSERT INTO pengeluaran (
-            id,
-            dompet_id,
-            kategori_id,
-            judul,
-            catatan,
-            jumlah,
-            tanggal_transaksi,
-            pakai_dana_darurat,
-            sumber_data,
-            is_deleted,
-            created_at,
-            updated_at
-          ) VALUES (
-            $id,
-            $dompet_id,
-            $kategori_id,
-            $judul,
-            $catatan,
-            $jumlah,
-            $tanggal_transaksi,
-            $pakai_dana_darurat,
-            $sumber_data,
-            $is_deleted,
-            $created_at,
-            $updated_at
-          )
-          ON CONFLICT(id) DO UPDATE SET
-            dompet_id = excluded.dompet_id,
-            kategori_id = excluded.kategori_id,
-            judul = excluded.judul,
-            catatan = excluded.catatan,
-            jumlah = excluded.jumlah,
-            tanggal_transaksi = excluded.tanggal_transaksi,
-            pakai_dana_darurat = excluded.pakai_dana_darurat,
-            sumber_data = excluded.sumber_data,
-            is_deleted = excluded.is_deleted,
-            created_at = excluded.created_at,
-            updated_at = excluded.updated_at
-        `,
-        {
-          $id: item.id_lokal,
-          $dompet_id: item.dompet_id_lokal,
-          $kategori_id: item.kategori_id_lokal,
-          $judul: item.judul,
-          $catatan: item.catatan,
-          $jumlah: item.jumlah,
-          $tanggal_transaksi: item.tanggal_transaksi,
-          $pakai_dana_darurat: item.pakai_dana_darurat ? 1 : 0,
-          $sumber_data: item.sumber_data ?? "lokal",
-          $is_deleted: item.is_deleted ? 1 : 0,
-          $created_at: item.created_at,
-          $updated_at: item.updated_at,
-        }
+    // 5. Pengeluaran
+    if (bundle.pengeluaran.length > 0) {
+      const stmt = await txn.prepareAsync(
+        `INSERT INTO pengeluaran (id, dompet_id, kategori_id, judul, catatan, jumlah, tanggal_transaksi, pakai_dana_darurat, sumber_data, is_deleted, created_at, updated_at) 
+         VALUES ($id, $dompet_id, $kategori_id, $judul, $catatan, $jumlah, $tanggal, $darurat, $sumber, $is_deleted, $created_at, $updated_at)
+         ON CONFLICT(id) DO UPDATE SET 
+           dompet_id = excluded.dompet_id, kategori_id = excluded.kategori_id, judul = excluded.judul, 
+           catatan = excluded.catatan, jumlah = excluded.jumlah, tanggal_transaksi = excluded.tanggal_transaksi, 
+           pakai_dana_darurat = excluded.pakai_dana_darurat, sumber_data = excluded.sumber_data, 
+           is_deleted = excluded.is_deleted, created_at = excluded.created_at, updated_at = excluded.updated_at`
       );
+      try {
+        for (const item of bundle.pengeluaran) {
+          await stmt.executeAsync({
+            $id: item.id_lokal,
+            $dompet_id: item.dompet_id_lokal,
+            $kategori_id: item.kategori_id_lokal,
+            $judul: item.judul,
+            $catatan: item.catatan,
+            $jumlah: item.jumlah,
+            $tanggal: item.tanggal_transaksi,
+            $darurat: item.pakai_dana_darurat ? 1 : 0,
+            $sumber: item.sumber_data ?? "lokal",
+            $is_deleted: item.is_deleted ? 1 : 0,
+            $created_at: item.created_at,
+            $updated_at: item.updated_at,
+          });
+        }
+      } finally {
+        await stmt.finalizeAsync();
+      }
     }
 
-    for (const item of bundle.pengingatTagihan) {
-      await txn.runAsync(
-        `
-          INSERT INTO pengingat_tagihan (
-            id,
-            judul,
-            catatan,
-            nominal,
-            dompet_id,
-            tanggal_jatuh_tempo,
-            status,
-            pengulangan,
-            lokal_notifikasi_id,
-            jam_pengingat,
-            notifikasi_diaktifkan,
-            created_at,
-            updated_at
-          ) VALUES (
-            $id,
-            $judul,
-            $catatan,
-            $nominal,
-            $dompet_id,
-            $tanggal_jatuh_tempo,
-            $status,
-            $pengulangan,
-            NULL,
-            $jam_pengingat,
-            $notifikasi_diaktifkan,
-            $created_at,
-            $updated_at
-          )
-          ON CONFLICT(id) DO UPDATE SET
-            judul = excluded.judul,
-            catatan = excluded.catatan,
-            nominal = excluded.nominal,
-            dompet_id = excluded.dompet_id,
-            tanggal_jatuh_tempo = excluded.tanggal_jatuh_tempo,
-            status = excluded.status,
-            pengulangan = excluded.pengulangan,
-            jam_pengingat = excluded.jam_pengingat,
-            notifikasi_diaktifkan = excluded.notifikasi_diaktifkan,
-            created_at = excluded.created_at,
-            updated_at = excluded.updated_at
-        `,
-        {
-          $id: item.id_lokal,
-          $judul: item.judul,
-          $catatan: item.catatan,
-          $nominal: item.nominal,
-          $dompet_id: item.dompet_id_lokal,
-          $tanggal_jatuh_tempo: item.tanggal_jatuh_tempo,
-          $status: item.status,
-          $pengulangan: item.pengulangan,
-          $jam_pengingat: item.jam_pengingat,
-          $notifikasi_diaktifkan: item.notifikasi_diaktifkan ? 1 : 0,
-          $created_at: item.created_at,
-          $updated_at: item.updated_at,
-        }
+    // 6. Pengingat Tagihan
+    if (bundle.pengingatTagihan.length > 0) {
+      const stmt = await txn.prepareAsync(
+        `INSERT INTO pengingat_tagihan (id, judul, catatan, nominal, dompet_id, tanggal_jatuh_tempo, status, pengulangan, jam_pengingat, notifikasi_diaktifkan, created_at, updated_at) 
+         VALUES ($id, $judul, $catatan, $nominal, $dompet_id, $tanggal, $status, $pengulangan, $jam, $notif, $created_at, $updated_at)
+         ON CONFLICT(id) DO UPDATE SET 
+           judul = excluded.judul, catatan = excluded.catatan, nominal = excluded.nominal, 
+           dompet_id = excluded.dompet_id, tanggal_jatuh_tempo = excluded.tanggal_jatuh_tempo, 
+           status = excluded.status, pengulangan = excluded.pengulangan, jam_pengingat = excluded.jam_pengingat, 
+           notifikasi_diaktifkan = excluded.notifikasi_diaktifkan, created_at = excluded.created_at, updated_at = excluded.updated_at`
       );
+      try {
+        for (const item of bundle.pengingatTagihan) {
+          await stmt.executeAsync({
+            $id: item.id_lokal,
+            $judul: item.judul,
+            $catatan: item.catatan,
+            $nominal: item.nominal,
+            $dompet_id: item.dompet_id_lokal,
+            $tanggal: item.tanggal_jatuh_tempo,
+            $status: item.status,
+            $pengulangan: item.pengulangan,
+            $jam: item.jam_pengingat,
+            $notif: item.notifikasi_diaktifkan ? 1 : 0,
+            $created_at: item.created_at,
+            $updated_at: item.updated_at,
+          });
+        }
+      } finally {
+        await stmt.finalizeAsync();
+      }
     }
 
-    for (const item of bundle.transferDompet) {
-      await txn.runAsync(
-        `
-          INSERT INTO transfer_dompet (
-            id,
-            dompet_sumber_id,
-            dompet_tujuan_id,
-            jumlah,
-            tanggal_transfer,
-            catatan,
-            sumber_dana_darurat,
-            created_at,
-            updated_at
-          ) VALUES (
-            $id,
-            $dompet_sumber_id,
-            $dompet_tujuan_id,
-            $jumlah,
-            $tanggal_transfer,
-            $catatan,
-            $sumber_dana_darurat,
-            $created_at,
-            $updated_at
-          )
-          ON CONFLICT(id) DO UPDATE SET
-            dompet_sumber_id = excluded.dompet_sumber_id,
-            dompet_tujuan_id = excluded.dompet_tujuan_id,
-            jumlah = excluded.jumlah,
-            tanggal_transfer = excluded.tanggal_transfer,
-            catatan = excluded.catatan,
-            sumber_dana_darurat = excluded.sumber_dana_darurat,
-            created_at = excluded.created_at,
-            updated_at = excluded.updated_at
-        `,
-        {
-          $id: item.id_lokal,
-          $dompet_sumber_id: item.dompet_sumber_id_lokal,
-          $dompet_tujuan_id: item.dompet_tujuan_id_lokal,
-          $jumlah: item.jumlah,
-          $tanggal_transfer: item.tanggal_transfer,
-          $catatan: item.catatan,
-          $sumber_dana_darurat: item.sumber_dana_darurat ? 1 : 0,
-          $created_at: item.created_at,
-          $updated_at: item.updated_at,
-        }
+    // 7. Transfer Dompet
+    if (bundle.transferDompet.length > 0) {
+      const stmt = await txn.prepareAsync(
+        `INSERT INTO transfer_dompet (id, dompet_sumber_id, dompet_tujuan_id, jumlah, tanggal_transfer, catatan, sumber_dana_darurat, created_at, updated_at) 
+         VALUES ($id, $sumber_id, $tujuan_id, $jumlah, $tanggal, $catatan, $darurat, $created_at, $updated_at)
+         ON CONFLICT(id) DO UPDATE SET 
+           dompet_sumber_id = excluded.dompet_sumber_id, dompet_tujuan_id = excluded.dompet_tujuan_id, 
+           jumlah = excluded.jumlah, tanggal_transfer = excluded.tanggal_transfer, catatan = excluded.catatan, 
+           sumber_dana_darurat = excluded.sumber_dana_darurat, created_at = excluded.created_at, updated_at = excluded.updated_at`
       );
+      try {
+        for (const item of bundle.transferDompet) {
+          await stmt.executeAsync({
+            $id: item.id_lokal,
+            $sumber_id: item.dompet_sumber_id_lokal,
+            $tujuan_id: item.dompet_tujuan_id_lokal,
+            $jumlah: item.jumlah,
+            $tanggal: item.tanggal_transfer,
+            $catatan: item.catatan,
+            $darurat: item.sumber_dana_darurat ? 1 : 0,
+            $created_at: item.created_at,
+            $updated_at: item.updated_at,
+          });
+        }
+      } finally {
+        await stmt.finalizeAsync();
+      }
     }
 
-    for (const item of bundle.anggaranBulanan) {
-      await txn.runAsync(
-        `
-          INSERT INTO anggaran_bulanan (
-            id,
-            bulan,
-            nama,
-            kategori_id,
-            batas_nominal,
-            ambang_peringatan_persen,
-            is_aktif,
-            created_at,
-            updated_at
-          ) VALUES (
-            $id,
-            $bulan,
-            $nama,
-            $kategori_id,
-            $batas_nominal,
-            $ambang_peringatan_persen,
-            $is_aktif,
-            $created_at,
-            $updated_at
-          )
-          ON CONFLICT(id) DO UPDATE SET
-            bulan = excluded.bulan,
-            nama = excluded.nama,
-            kategori_id = excluded.kategori_id,
-            batas_nominal = excluded.batas_nominal,
-            ambang_peringatan_persen = excluded.ambang_peringatan_persen,
-            is_aktif = excluded.is_aktif,
-            created_at = excluded.created_at,
-            updated_at = excluded.updated_at
-        `,
-        {
-          $id: item.id_lokal,
-          $bulan: item.bulan,
-          $nama: item.nama,
-          $kategori_id: item.kategori_id_lokal,
-          $batas_nominal: item.batas_nominal,
-          $ambang_peringatan_persen: item.ambang_peringatan_persen,
-          $is_aktif: item.is_aktif ? 1 : 0,
-          $created_at: item.created_at,
-          $updated_at: item.updated_at,
-        }
+    // 8. Anggaran Bulanan
+    if (bundle.anggaranBulanan.length > 0) {
+      const stmt = await txn.prepareAsync(
+        `INSERT INTO anggaran_bulanan (id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at) 
+         VALUES ($id, $bulan, $nama, $kategori_id, $batas, $ambang, $is_aktif, $created_at, $updated_at)
+         ON CONFLICT(id) DO UPDATE SET 
+           bulan = excluded.bulan, nama = excluded.nama, kategori_id = excluded.kategori_id, 
+           batas_nominal = excluded.batas_nominal, ambang_peringatan_persen = excluded.ambang_peringatan_persen, 
+           is_aktif = excluded.is_aktif, created_at = excluded.created_at, updated_at = excluded.updated_at`
       );
+      try {
+        for (const item of bundle.anggaranBulanan) {
+          await stmt.executeAsync({
+            $id: item.id_lokal,
+            $bulan: item.bulan,
+            $nama: item.nama,
+            $kategori_id: item.kategori_id_lokal,
+            $batas: item.batas_nominal,
+            $ambang: item.ambang_peringatan_persen,
+            $is_aktif: item.is_aktif ? 1 : 0,
+            $created_at: item.created_at,
+            $updated_at: item.updated_at,
+          });
+        }
+      } finally {
+        await stmt.finalizeAsync();
+      }
     }
   });
 }

@@ -49,8 +49,18 @@ export default function CloudAutoSyncProvider({
   const startupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ABSOLUT: Pemutus Sirkuit (Circuit Breaker)
+  const isMountedRef = useRef(true);
+
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const [syncMessage, setSyncMessage] = useState("");
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current) {
@@ -75,6 +85,7 @@ export default function CloudAutoSyncProvider({
 
   const showStatus = useCallback(
     (status: SyncStatus, message: string) => {
+      if (!isMountedRef.current) return; // ABSOLUT: Jangan sentuh UI jika komponen mati
       clearHideTimer();
       setSyncStatus(status);
       setSyncMessage(message);
@@ -87,6 +98,7 @@ export default function CloudAutoSyncProvider({
       clearHideTimer();
 
       hideTimerRef.current = setTimeout(() => {
+        if (!isMountedRef.current) return; // ABSOLUT
         setSyncStatus("idle");
         setSyncMessage("");
         hideTimerRef.current = null;
@@ -95,6 +107,7 @@ export default function CloudAutoSyncProvider({
     [clearHideTimer]
   );
 
+  // ✅ Pindahkan runSilentSync ke atas agar bisa dipakai oleh useRef
   const runSilentSync = useCallback(
     async (reason: string) => {
       if (!isReady || !userId) {
@@ -119,9 +132,13 @@ export default function CloudAutoSyncProvider({
         isSyncingRef.current = true;
         lastSyncAttemptAtRef.current = now;
 
+        if (!isMountedRef.current) return; // ABSOLUT
         showStatus("syncing", "Menyinkronkan data...");
 
         const result = await syncCloudNow();
+        
+        if (!isMountedRef.current) return; // ABSOLUT
+
         const pushedTotal = sumRecordValues(result.pushed);
         const pulledTotal = sumRecordValues(result.pulled);
         const totalChanged = pushedTotal + pulledTotal;
@@ -137,6 +154,7 @@ export default function CloudAutoSyncProvider({
         hideLater(SUCCESS_VISIBLE_MS);
       } catch (error) {
         console.log("auto sync gagal:", error);
+        if (!isMountedRef.current) return; // ABSOLUT
         showStatus("error", "Sinkronisasi gagal. Coba nanti.");
         hideLater(ERROR_VISIBLE_MS);
       } finally {
@@ -146,6 +164,15 @@ export default function CloudAutoSyncProvider({
     [hideLater, isReady, showStatus, syncCloudNow, userId]
   );
 
+  // ✅ Ref untuk versi terbaru runSilentSync
+  const runSilentSyncRef = useRef(runSilentSync);
+
+  // ✅ Sinkronkan ref setiap kali fungsi berubah
+  useEffect(() => {
+    runSilentSyncRef.current = runSilentSync;
+  }, [runSilentSync]);
+
+  // ✅ Startup timer: gunakan ref, hapus runSilentSync dari dependensi
   useEffect(() => {
     clearStartupTimer();
 
@@ -154,14 +181,15 @@ export default function CloudAutoSyncProvider({
     }
 
     startupTimerRef.current = setTimeout(() => {
-      runSilentSync("startup");
+      runSilentSyncRef.current("startup");
     }, STARTUP_SYNC_DELAY_MS);
 
     return () => {
       clearStartupTimer();
     };
-  }, [clearStartupTimer, isReady, runSilentSync, userId]);
+  }, [clearStartupTimer, isReady, userId]);
 
+  // ✅ AppState timer: gunakan ref, hapus runSilentSync dari dependensi
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
       const previousState = lastAppStateRef.current;
@@ -174,7 +202,7 @@ export default function CloudAutoSyncProvider({
         clearResumeTimer();
 
         resumeTimerRef.current = setTimeout(() => {
-          runSilentSync("app_active");
+          runSilentSyncRef.current("app_active");
         }, RESUME_SYNC_DELAY_MS);
       }
     });
@@ -183,7 +211,7 @@ export default function CloudAutoSyncProvider({
       subscription.remove();
       clearResumeTimer();
     };
-  }, [clearResumeTimer, runSilentSync]);
+  }, [clearResumeTimer]); // ✅ Hanya clearResumeTimer, tidak ada runSilentSync
 
   useEffect(() => {
     if (!userId) {

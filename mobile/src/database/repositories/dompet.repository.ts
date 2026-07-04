@@ -212,99 +212,78 @@ export async function ubahSaldoDompetLokal(
   }
 
   await ensureKoreksiSaldoDompetTable(db);
-
-  const dompet = await db.getFirstAsync<DompetSaldoKelolaRow>(
-    `
-      SELECT
-        id,
-        nama,
-        saldo_saat_ini,
-        is_aktif
-      FROM dompet
-      WHERE id = $dompet_id
-        AND is_aktif = 1
-      LIMIT 1
-    `,
-    {
-      $dompet_id: payload.dompetId,
-    }
-  );
-
-  if (!dompet) {
-    throw new Error("Dompet tidak ditemukan atau sudah tidak aktif.");
-  }
-
-  const saldoSebelum = dompet.saldo_saat_ini;
-  const saldoSesudah = payload.saldoBaru;
-  const selisih = saldoSesudah - saldoSebelum;
-
-  if (selisih === 0) {
-    return null;
-  }
-
   const now = getNowIso();
-  const auditId = createLocalId("koreksi-saldo");
+  let auditId = "";
 
-  // FIX: Menggunakan runAsync berurutan (TANPA withExclusiveTransactionAsync) agar sinkronisasi tidak crash
-  await db.runAsync(
-    `
-      UPDATE dompet
-      SET
-        saldo_saat_ini = $saldo_baru,
-        updated_at = $updated_at
-      WHERE id = $dompet_id
-        AND is_aktif = 1
-    `,
-    {
-      $saldo_baru: saldoSesudah,
-      $updated_at: now,
-      $dompet_id: payload.dompetId,
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const dompet = await txn.getFirstAsync<{
+      id: string;
+      nama: string;
+      saldo_saat_ini: number;
+      is_aktif: number;
+    }>(
+      `
+        SELECT id, nama, saldo_saat_ini, is_aktif
+        FROM dompet
+        WHERE id = $dompet_id AND is_aktif = 1
+        LIMIT 1
+      `,
+      { $dompet_id: payload.dompetId }
+    );
+
+    if (!dompet) {
+      throw new Error("Dompet tidak ditemukan atau sudah tidak aktif.");
     }
-  );
 
-  await db.runAsync(
-    `
-      INSERT INTO koreksi_saldo_dompet (
-        id,
-        dompet_id,
-        nama_dompet_snapshot,
-        saldo_sebelum,
-        saldo_sesudah,
-        selisih,
-        catatan,
-        sumber,
-        created_at,
-        updated_at
-      ) VALUES (
-        $id,
-        $dompet_id,
-        $nama_dompet_snapshot,
-        $saldo_sebelum,
-        $saldo_sesudah,
-        $selisih,
-        $catatan,
-        $sumber,
-        $created_at,
-        $updated_at
-      )
-    `,
-    {
-      $id: auditId,
-      $dompet_id: payload.dompetId,
-      $nama_dompet_snapshot: dompet.nama,
-      $saldo_sebelum: saldoSebelum,
-      $saldo_sesudah: saldoSesudah,
-      $selisih: selisih,
-      $catatan:
-        payload.catatan?.trim() ||
-        "Koreksi saldo manual dari fitur Kelola Dompet. Ini bukan transaksi uang masuk atau uang keluar.",
-      $sumber: "manual",
-      $created_at: now,
-      $updated_at: now,
-    }
-  );
+    const saldoSebelum = dompet.saldo_saat_ini;
+    const saldoSesudah = payload.saldoBaru;
+    const selisih = saldoSesudah - saldoSebelum;
 
-  return auditId;
+    if (selisih === 0) return;
+
+    auditId = createLocalId("koreksi-saldo");
+
+    await txn.runAsync(
+      `
+        UPDATE dompet
+        SET saldo_saat_ini = $saldo_baru, updated_at = $updated_at
+        WHERE id = $dompet_id AND is_aktif = 1
+      `,
+      {
+        $saldo_baru: saldoSesudah,
+        $updated_at: now,
+        $dompet_id: payload.dompetId,
+      }
+    );
+
+    await txn.runAsync(
+      `
+        INSERT INTO koreksi_saldo_dompet (
+          id, dompet_id, nama_dompet_snapshot, saldo_sebelum,
+          saldo_sesudah, selisih, catatan, sumber, created_at, updated_at
+        ) VALUES (
+          $id, $dompet_id, $nama_dompet_snapshot, $saldo_sebelum,
+          $saldo_sesudah, $selisih, $catatan, $sumber, $created_at, $updated_at
+        )
+      `,
+      {
+        $id: auditId,
+        $dompet_id: payload.dompetId,
+        $nama_dompet_snapshot: dompet.nama,
+        $saldo_sebelum: saldoSebelum,
+        $saldo_sesudah: saldoSesudah,
+        $selisih: selisih,
+        $catatan:
+          payload.catatan?.trim() ||
+          "Koreksi saldo manual dari fitur Kelola Dompet.",
+        $sumber: "manual",
+        $created_at: now,
+        $updated_at: now,
+      }
+    );
+  });
+
+  return auditId || createLocalId("koreksi-saldo");
 }
 
 export async function getRiwayatKoreksiSaldoDompet(
@@ -358,78 +337,49 @@ export async function nonaktifkanDompetLokal(
 ) {
   const now = getNowIso();
 
-  // FIX: Menggunakan getFirstAsync & runAsync (TANPA withExclusiveTransactionAsync) agar sinkronisasi tidak crash
-  const countRow = await db.getFirstAsync<CountRow>(
-    `
-      SELECT COUNT(*) AS total
-      FROM dompet
-      WHERE is_aktif = 1
-    `
-  );
-
-  const totalAktif = countRow?.total ?? 0;
-
-  if (totalAktif <= 1) {
-    throw new Error("Minimal harus ada 1 dompet aktif.");
-  }
-
-  const dompet = await db.getFirstAsync<DompetKelolaRow>(
-    `
-      SELECT id, nama, is_default, is_aktif
-      FROM dompet
-      WHERE id = $dompet_id
-      LIMIT 1
-    `,
-    {
-      $dompet_id: dompetId,
-    }
-  );
-
-  if (!dompet || !dompet.is_aktif) {
-    throw new Error("Dompet tidak ditemukan atau sudah tidak aktif.");
-  }
-
-  await db.runAsync(
-    `
-      UPDATE dompet
-      SET
-        is_aktif = 0,
-        is_default = 0,
-        updated_at = $updated_at
-      WHERE id = $dompet_id
-        AND is_aktif = 1
-    `,
-    {
-      $updated_at: now,
-      $dompet_id: dompetId,
-    }
-  );
-
-  if (dompet.is_default) {
-    const pengganti = await db.getFirstAsync<{ id: string }>(
-      `
-        SELECT id
-        FROM dompet
-        WHERE is_aktif = 1
-        ORDER BY created_at ASC
-        LIMIT 1
-      `
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const countRow = await txn.getFirstAsync<{ total: number | null }>(
+      `SELECT COUNT(*) AS total FROM dompet WHERE is_aktif = 1`
     );
 
-    if (pengganti?.id) {
-      await db.runAsync(
-        `
-          UPDATE dompet
-          SET
-            is_default = 1,
-            updated_at = $updated_at
-          WHERE id = $id
-        `,
-        {
-          $updated_at: now,
-          $id: pengganti.id,
-        }
-      );
+    if ((countRow?.total ?? 0) <= 1) {
+      throw new Error("Minimal harus ada 1 dompet aktif.");
     }
-  }
+
+    const dompet = await txn.getFirstAsync<{
+      id: string;
+      nama: string;
+      is_default: number;
+      is_aktif: number;
+    }>(
+      `SELECT id, nama, is_default, is_aktif FROM dompet WHERE id = $dompet_id LIMIT 1`,
+      { $dompet_id: dompetId }
+    );
+
+    if (!dompet || !dompet.is_aktif) {
+      throw new Error("Dompet tidak ditemukan atau sudah tidak aktif.");
+    }
+
+    await txn.runAsync(
+      `
+        UPDATE dompet
+        SET is_aktif = 0, is_default = 0, updated_at = $updated_at
+        WHERE id = $dompet_id AND is_aktif = 1
+      `,
+      { $updated_at: now, $dompet_id: dompetId }
+    );
+
+    if (dompet.is_default) {
+      const pengganti = await txn.getFirstAsync<{ id: string }>(
+        `SELECT id FROM dompet WHERE is_aktif = 1 ORDER BY created_at ASC LIMIT 1`
+      );
+
+      if (pengganti?.id) {
+        await txn.runAsync(
+          `UPDATE dompet SET is_default = 1, updated_at = $updated_at WHERE id = $id`,
+          { $updated_at: now, $id: pengganti.id }
+        );
+      }
+    }
+  });
 }

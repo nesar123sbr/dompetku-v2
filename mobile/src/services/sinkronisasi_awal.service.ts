@@ -24,7 +24,6 @@ function getSupabaseClientOrThrow() {
       "Supabase belum dikonfigurasi. Isi .env dan pastikan project tidak sedang pause."
     );
   }
-
   return supabase;
 }
 
@@ -34,42 +33,6 @@ function toBool(value: number) {
 
 function toDeletedFlag(value: number | null | undefined) {
   return value ? 1 : 0;
-}
-
-function chunkArray<T>(items: T[], size = 200) {
-  const result: T[][] = [];
-
-  for (let index = 0; index < items.length; index += size) {
-    result.push(items.slice(index, index + size));
-  }
-
-  return result;
-}
-
-async function upsertInChunks(
-  tableName: string,
-  rows: Record<string, unknown>[],
-  onConflict: string
-) {
-  const client = getSupabaseClientOrThrow();
-
-  if (rows.length === 0) {
-    return 0;
-  }
-
-  const chunks = chunkArray(rows, 200);
-
-  for (const chunk of chunks) {
-    const { error } = await client
-      .from(tableName)
-      .upsert(chunk, { onConflict });
-
-    if (error) {
-      throw error;
-    }
-  }
-
-  return rows.length;
 }
 
 function getNamaLengkapDariUser(user: User) {
@@ -94,38 +57,13 @@ export async function sinkronisasiAwalDataLokalKeSupabase(
   const penggunaId = user.id;
   const bundle = await getBundleSinkronisasiAwalLokal(db);
 
-  const summary: SinkronisasiAwalSummary = {
-    profilPengguna: 0,
-    dompet: 0,
-    kategoriPemasukan: 0,
-    kategoriPengeluaran: 0,
-    pemasukan: 0,
-    pengeluaran: 0,
-    pengingatTagihan: 0,
-    transferDompet: 0,
-  };
-
-  const { error: profilError } = await client.from("profil_pengguna").upsert(
-    {
-      id: penggunaId,
+  // Bungkus semua data lokal ke dalam satu JSON besar (Payload)
+  const payload = {
+    profilPengguna: {
       email: user.email ?? null,
       nama_lengkap: getNamaLengkapDariUser(user),
     },
-    {
-      onConflict: "id",
-    }
-  );
-
-  if (profilError) {
-    throw profilError;
-  }
-
-  summary.profilPengguna = 1;
-
-  summary.dompet = await upsertInChunks(
-    "dompet",
-    bundle.dompet.map((item) => ({
-      pengguna_id: penggunaId,
+    dompet: bundle.dompet.map((item) => ({
       id_lokal: item.id,
       nama: item.nama,
       jenis: item.jenis,
@@ -137,13 +75,7 @@ export async function sinkronisasiAwalDataLokalKeSupabase(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  summary.kategoriPemasukan = await upsertInChunks(
-    "kategori_pemasukan",
-    bundle.kategoriPemasukan.map((item) => ({
-      pengguna_id: penggunaId,
+    kategoriPemasukan: bundle.kategoriPemasukan.map((item) => ({
       id_lokal: item.id,
       nama: item.nama,
       ikon: item.ikon,
@@ -154,13 +86,7 @@ export async function sinkronisasiAwalDataLokalKeSupabase(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  summary.kategoriPengeluaran = await upsertInChunks(
-    "kategori_pengeluaran",
-    bundle.kategoriPengeluaran.map((item) => ({
-      pengguna_id: penggunaId,
+    kategoriPengeluaran: bundle.kategoriPengeluaran.map((item) => ({
       id_lokal: item.id,
       nama: item.nama,
       kelompok: item.kelompok,
@@ -172,13 +98,7 @@ export async function sinkronisasiAwalDataLokalKeSupabase(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  summary.pemasukan = await upsertInChunks(
-    "pemasukan",
-    bundle.pemasukan.map((item) => ({
-      pengguna_id: penggunaId,
+    pemasukan: bundle.pemasukan.map((item) => ({
       id_lokal: item.id,
       dompet_id_lokal: item.dompet_id,
       kategori_id_lokal: item.kategori_id,
@@ -191,13 +111,7 @@ export async function sinkronisasiAwalDataLokalKeSupabase(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  summary.pengeluaran = await upsertInChunks(
-    "pengeluaran",
-    bundle.pengeluaran.map((item) => ({
-      pengguna_id: penggunaId,
+    pengeluaran: bundle.pengeluaran.map((item) => ({
       id_lokal: item.id,
       dompet_id_lokal: item.dompet_id,
       kategori_id_lokal: item.kategori_id,
@@ -211,13 +125,7 @@ export async function sinkronisasiAwalDataLokalKeSupabase(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  summary.pengingatTagihan = await upsertInChunks(
-    "pengingat_tagihan",
-    bundle.pengingatTagihan.map((item) => ({
-      pengguna_id: penggunaId,
+    pengingatTagihan: bundle.pengingatTagihan.map((item) => ({
       id_lokal: item.id,
       judul: item.judul,
       catatan: item.catatan,
@@ -232,13 +140,7 @@ export async function sinkronisasiAwalDataLokalKeSupabase(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
-
-  summary.transferDompet = await upsertInChunks(
-    "transfer_dompet",
-    bundle.transferDompet.map((item) => ({
-      pengguna_id: penggunaId,
+    transferDompet: bundle.transferDompet.map((item) => ({
       id_lokal: item.id,
       dompet_sumber_id_lokal: item.dompet_sumber_id,
       dompet_tujuan_id_lokal: item.dompet_tujuan_id,
@@ -249,10 +151,28 @@ export async function sinkronisasiAwalDataLokalKeSupabase(
       created_at: item.created_at,
       updated_at: item.updated_at,
     })),
-    "pengguna_id,id_lokal"
-  );
+    anggaranBulanan: [], // Sinkronisasi awal tidak perlu bawa array anggaran bulanan kosong
+  };
+
+  // Eksekusi atomik lewat 1 request HTTP
+  const { error } = await client.rpc("sync_bundle", {
+    payload: payload,
+  });
+
+  if (error) {
+    throw error;
+  }
 
   await tandaiSinkronisasiAwalSelesai(db);
 
-  return summary;
+  return {
+    profilPengguna: 1,
+    dompet: bundle.dompet.length,
+    kategoriPemasukan: bundle.kategoriPemasukan.length,
+    kategoriPengeluaran: bundle.kategoriPengeluaran.length,
+    pemasukan: bundle.pemasukan.length,
+    pengeluaran: bundle.pengeluaran.length,
+    pengingatTagihan: bundle.pengingatTagihan.length,
+    transferDompet: bundle.transferDompet.length,
+  };
 }

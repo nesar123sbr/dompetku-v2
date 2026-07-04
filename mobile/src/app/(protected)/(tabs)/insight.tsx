@@ -16,10 +16,10 @@ import {
 } from "@/components";
 import { COLORS, ROUTES, getFloatingTabContentPadding } from "@/constants";
 import {
-  getInsightBulananSaatIni,
   getRingkasanAnggaranBulanan,
   getRingkasanDanaDarurat,
   getRingkasanPengingatTagihan,
+  getInsightRentangPeriode,
   type InsightBulanan,
   type RingkasanAnggaranBulananItem,
   type RingkasanDanaDarurat,
@@ -30,7 +30,6 @@ import {
   formatPersen,
   formatRupiah,
   getCategoryChartColor,
-  getTodayDateInput,
 } from "@/utils";
 import {
   exportLaporanBulananCsv,
@@ -67,36 +66,6 @@ const EMPTY_PENGINGAT: RingkasanPengingatTagihan = {
   terlambat: 0,
   notifikasiAktif: 0,
 };
-
-function getMonthLabel(dateInput: string) {
-  const date = new Date(`${dateInput}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Bulan berjalan";
-  }
-
-  return new Intl.DateTimeFormat("id-ID", {
-    month: "long",
-    year: "numeric",
-  }).format(date);
-}
-
-function dateInputToBulan(dateInput: string) {
-  const date = new Date(`${dateInput}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    const fallback = new Date();
-    const fallbackYear = fallback.getFullYear();
-    const fallbackMonth = String(fallback.getMonth() + 1).padStart(2, "0");
-
-    return `${fallbackYear}-${fallbackMonth}`;
-  }
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-
-  return `${year}-${month}`;
-}
 
 function getHealthLabel(status: InsightBulanan["statusKesehatan"]) {
   switch (status) {
@@ -256,9 +225,6 @@ export default function InsightTabPage() {
   const { width, height } = useWindowDimensions();
   const { isGuestMode } = useAuthSession();
 
-  const [selectedMonthDate, setSelectedMonthDate] = useState(
-    getTodayDateInput()
-  );
   const [isLoading, setIsLoading] = useState(true);
   const [insight, setInsight] = useState<InsightBulanan>(EMPTY_INSIGHT);
   const [danaDarurat, setDanaDarurat] =
@@ -269,11 +235,71 @@ export default function InsightTabPage() {
 
   const [isExporting, setIsExporting] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState(""); // <-- State khusus pesan error rentang tanggal
 
-  const selectedBulan = useMemo(
-    () => dateInputToBulan(selectedMonthDate),
-    [selectedMonthDate]
-  );
+  // ===== STATE RENTANG TANGGAL =====
+  const [tanggalMulai, setTanggalMulai] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  });
+
+  const [tanggalSelesai, setTanggalSelesai] = useState<string>(() => {
+    const now = new Date();
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return `${endOfMonth.getFullYear()}-${String(endOfMonth.getMonth() + 1).padStart(2, "0")}-${String(endOfMonth.getDate()).padStart(2, "0")}`;
+  });
+
+  // Turunan bulan untuk export & anggaran (tetap pakai bulan dari tanggalMulai)
+  const selectedBulan = useMemo(() => tanggalMulai.substring(0, 7), [tanggalMulai]);
+
+  // === FUNGSI PRESET CEPAT ===
+  function setPreset(preset: "bulan_ini" | "bulan_lalu" | "7_hari" | "30_hari") {
+    const now = new Date();
+    let start = new Date(now);
+    let end = new Date(now);
+
+    if (preset === "bulan_ini") {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    } else if (preset === "bulan_lalu") {
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      end = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else if (preset === "7_hari") {
+      start = new Date(now);
+      start.setDate(now.getDate() - 6);
+    } else if (preset === "30_hari") {
+      start = new Date(now);
+      start.setDate(now.getDate() - 29);
+    }
+
+    const formatAman = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    setErrorMessage(""); // Bersihkan error jika pakai preset
+    setTanggalMulai(formatAman(start));
+    setTanggalSelesai(formatAman(end));
+    setExportMessage("Laporan diperbarui mengikuti rentang tanggal baru.");
+  }
+
+  // === VALIDASI ANTI-TANGGAL TERBALIK ===
+  function handleDateChange(type: "start" | "end", val: string) {
+    setErrorMessage(""); // Bersihkan error sebelum validasi
+
+    if (type === "start") {
+      if (val > tanggalSelesai) {
+        setErrorMessage("⚠️ Error: Tanggal mulai tidak boleh melebihi tanggal selesai.");
+        return;
+      }
+      setTanggalMulai(val);
+    } else {
+      if (val < tanggalMulai) {
+        setErrorMessage("⚠️ Error: Tanggal selesai tidak boleh kurang dari tanggal mulai.");
+        return;
+      }
+      setTanggalSelesai(val);
+    }
+    setExportMessage("Laporan diperbarui mengikuti rentang tanggal baru.");
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -283,13 +309,13 @@ export default function InsightTabPage() {
         try {
           setIsLoading(true);
 
-          const insightData = await getInsightBulananSaatIni(db, selectedBulan);
-          const danaDaruratData = await getRingkasanDanaDarurat(db);
-          const pengingatData = await getRingkasanPengingatTagihan(db);
-          const anggaranData = await getRingkasanAnggaranBulanan(
-            db,
-            selectedBulan
-          );
+          const [insightData, danaDaruratData, pengingatData, anggaranData] =
+            await Promise.all([
+              getInsightRentangPeriode(db, { tanggalMulai, tanggalSelesai }),
+              getRingkasanDanaDarurat(db),
+              getRingkasanPengingatTagihan(db),
+              getRingkasanAnggaranBulanan(db, selectedBulan),
+            ]);
 
           if (!isActive) return;
 
@@ -310,7 +336,7 @@ export default function InsightTabPage() {
       return () => {
         isActive = false;
       };
-    }, [db, selectedBulan])
+    }, [db, selectedBulan, tanggalMulai, tanggalSelesai])
   );
 
   async function handleExportPdf() {
@@ -323,7 +349,6 @@ export default function InsightTabPage() {
       if (result !== null) {
         setExportMessage("Laporan PDF berhasil disimpan.");
       } else {
-        // Silent Cancel untuk user, tapi tercatat di terminal dev
         console.log("Ekspor PDF dibatalkan oleh user.");
       }
     } catch (error) {
@@ -348,7 +373,6 @@ export default function InsightTabPage() {
       if (result !== null) {
         setExportMessage("Laporan CSV berhasil disimpan.");
       } else {
-        // Silent Cancel untuk user, tapi tercatat di terminal dev
         console.log("Ekspor CSV dibatalkan oleh user.");
       }
     } catch (error) {
@@ -525,17 +549,45 @@ export default function InsightTabPage() {
       ) : null}
 
       <AppCard style={insightScreenStyles.monthCard}>
-        <AppDateField
-          label="Bulan laporan"
-          value={selectedMonthDate}
-          onChangeDate={(value) => {
-            setSelectedMonthDate(value);
-            setExportMessage("Laporan diperbarui mengikuti bulan yang dipilih.");
-          }}
-          helperText={`Ditampilkan sebagai ${getMonthLabel(
-            selectedMonthDate
-          )}. Ringkasan mengikuti data pada bulan ini.`}
-        />
+        <Text style={insightScreenStyles.sectionTitle}>Periode Laporan</Text>
+        <Text style={insightScreenStyles.sectionSubtitle}>
+          Gunakan tombol cepat atau pilih rentang tanggal sendiri.
+        </Text>
+
+        <View style={{ flexDirection: 'row', marginBottom: 16, marginTop: 12 }}>
+          <View style={{ flex: 1, marginRight: 8 }}>
+            <AppButton title="Bulan Ini" variant="secondary" onPress={() => setPreset("bulan_ini")} />
+          </View>
+          <View style={{ flex: 1, marginRight: 8 }}>
+            <AppButton title="7 Hari" variant="secondary" onPress={() => setPreset("7_hari")} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <AppButton title="30 Hari" variant="secondary" onPress={() => setPreset("30_hari")} />
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row' }}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <AppDateField
+              label="Dari Tanggal"
+              value={tanggalMulai}
+              onChangeDate={(val) => handleDateChange("start", val)}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <AppDateField
+              label="Sampai Tanggal"
+              value={tanggalSelesai}
+              onChangeDate={(val) => handleDateChange("end", val)}
+            />
+          </View>
+        </View>
+
+        {!!errorMessage && (
+          <Text style={{ color: COLORS.danger, marginTop: 12, fontSize: 13 }}>
+            {errorMessage}
+          </Text>
+        )}
       </AppCard>
 
       <View

@@ -211,6 +211,12 @@ export async function getRingkasanAnggaranBulanan(
   db: SQLiteDatabase,
   bulan = getBulanIni()
 ): Promise<RingkasanAnggaranBulananItem[]> {
+  const [year, monthIndex] = bulan.split("-").map(Number);
+  const lastDay = new Date(year, monthIndex, 0).getDate();
+
+  const tanggalMulai = `${bulan}-01`;
+  const tanggalSelesai = `${bulan}-${String(lastDay).padStart(2, "0")}`;
+
   const rows = await db.getAllAsync<AnggaranRow>(
     `
       SELECT
@@ -227,7 +233,7 @@ export async function getRingkasanAnggaranBulanan(
         ON kg.id = a.kategori_id
       LEFT JOIN pengeluaran p
         ON p.is_deleted = 0
-       AND strftime('%Y-%m', p.tanggal_transaksi) = a.bulan
+       AND p.tanggal_transaksi >= $mulai AND p.tanggal_transaksi <= $selesai
        AND (
          a.kategori_id IS NULL
          OR p.kategori_id = a.kategori_id
@@ -246,6 +252,8 @@ export async function getRingkasanAnggaranBulanan(
     `,
     {
       $bulan: bulan,
+      $mulai: tanggalMulai,
+      $selesai: tanggalSelesai,
     }
   );
 

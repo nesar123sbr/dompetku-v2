@@ -619,49 +619,45 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     await createVersion1Tables(db);
     nextVersion = 1;
   }
-
+  
   if (nextVersion < 2) {
     await createVersion2Tables(db);
     nextVersion = 2;
   }
-
+  
   if (nextVersion < 3) {
     await createVersion3ReminderColumns(db);
     nextVersion = 3;
   }
-
+  
   if (nextVersion < 4) {
     await createVersion4BudgetTables(db);
     nextVersion = 4;
   }
-
+  
   if (nextVersion < 5) {
     await createVersion5WalletTypeColumn(db);
     nextVersion = 5;
   }
-
+  
   if (nextVersion < 6) {
     await createVersion6PerformanceIndexes(db);
     nextVersion = 6;
   }
-
+  
   if (nextVersion < 7) {
     await createVersion7Tombstone(db);
     nextVersion = 7;
-  } else if (DATABASE_VERSION >= 7) {
-    await createVersion7Tombstone(db);
   }
-
+  
   if (nextVersion < 8) {
     await createVersion8DatabaseHardening(db);
     nextVersion = 8;
-  } else if (DATABASE_VERSION >= 8) {
-    await createVersion8DatabaseHardening(db);
   }
 
   await seedDefaultData(db);
 
   if (nextVersion !== currentVersion) {
-    await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+    await db.execAsync(`PRAGMA user_version = ${nextVersion}`);
   }
 }

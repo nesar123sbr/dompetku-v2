@@ -490,20 +490,23 @@ export default function WalletTabPage() {
     applyLoadedData(refreshed);
   }
 
-  function clearMessages() {
+    // ✅ Kunci memori clearMessages
+  const clearMessages = useCallback(() => {
     setFormError("");
     setSuccessMessage("");
-  }
+  }, []);
 
-  function changePanel(panel: ActiveWalletPanel) {
+  // ✅ Kunci memori changePanel
+  const changePanel = useCallback((panel: ActiveWalletPanel) => {
     animateLayoutChange();
     setActivePanel(panel);
-  }
+  }, []);
 
-  function closePanel() {
+  // ✅ Kunci memori closePanel dan masukkan dependensinya
+  const closePanel = useCallback(() => {
     changePanel("none");
     clearMessages();
-  }
+  }, [changePanel, clearMessages]);
 
   function openTambahDompet() {
     Keyboard.dismiss();
@@ -512,7 +515,8 @@ export default function WalletTabPage() {
     clearMessages();
   }
 
-  function openTransferPanel() {
+  // ✅ openTransferPanel sekarang 100% aman, dependensi lengkap, bebas Infinite Loop
+  const openTransferPanel = useCallback(() => {
     Keyboard.dismiss();
 
     if (dompetList.length < 2) {
@@ -526,14 +530,14 @@ export default function WalletTabPage() {
     changePanel("transfer");
     setSelectedKelolaDompetId(null);
     clearMessages();
-  }
+  }, [dompetList.length, changePanel, clearMessages]);
+
+  // ✅ useEffect berjalan dengan sempurna tanpa warning linter
   useEffect(() => {
-    // Kalau ada perintah "transfer" dari URL dan dompet sudah dimuat, jalankan fungsi di atas
     if (params.action === "transfer" && dompetList.length > 0) {
       openTransferPanel();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.action, dompetList.length]);
+  }, [params.action, dompetList.length, openTransferPanel]);
 
   function openTransferDariDompet(dompetId: string) {
     Keyboard.dismiss();

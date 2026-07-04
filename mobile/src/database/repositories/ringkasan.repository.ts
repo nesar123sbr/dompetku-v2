@@ -88,33 +88,33 @@ export async function getRingkasanFilterPeriode(
   const params: Record<string, string> = {};
 
   if (payload.tahunBulan) {
-    // Menggunakan LIKE agar query SQLite super cepat (ngebut) 
     wherePemasukan += ` AND tanggal_transaksi LIKE $tahunBulan`;
     wherePengeluaran += ` AND tanggal_transaksi LIKE $tahunBulan`;
     params.$tahunBulan = `${payload.tahunBulan}%`;
   } else {
-    // Mode rentang tanggal
+    // 🔥 SARGABLE: pakai >= dan <= langsung, tambahkan waktu agar presisi
     if (payload.tanggalMulai) {
-      wherePemasukan += ` AND date(tanggal_transaksi) >= date($tanggalMulai)`;
-      wherePengeluaran += ` AND date(tanggal_transaksi) >= date($tanggalMulai)`;
+      wherePemasukan += ` AND tanggal_transaksi >= $tanggalMulai`;
+      wherePengeluaran += ` AND tanggal_transaksi >= $tanggalMulai`;
       params.$tanggalMulai = payload.tanggalMulai;
     }
     if (payload.tanggalSelesai) {
-      wherePemasukan += ` AND date(tanggal_transaksi) <= date($tanggalSelesai)`;
-      wherePengeluaran += ` AND date(tanggal_transaksi) <= date($tanggalSelesai)`;
+      wherePemasukan += ` AND tanggal_transaksi <= $tanggalSelesai`;
+      wherePengeluaran += ` AND tanggal_transaksi <= $tanggalSelesai`;
       params.$tanggalSelesai = payload.tanggalSelesai;
     }
   }
 
-  const pemasukanRow = await db.getFirstAsync<{ total: number | null }>(
-    `SELECT COALESCE(SUM(jumlah), 0) AS total FROM pemasukan ${wherePemasukan}`,
-    params
-  );
-
-  const pengeluaranRow = await db.getFirstAsync<{ total: number | null }>(
-    `SELECT COALESCE(SUM(jumlah), 0) AS total FROM pengeluaran ${wherePengeluaran}`,
-    params
-  );
+  const [pemasukanRow, pengeluaranRow] = await Promise.all([
+    db.getFirstAsync<{ total: number | null }>(
+      `SELECT COALESCE(SUM(jumlah), 0) AS total FROM pemasukan ${wherePemasukan}`,
+      params
+    ),
+    db.getFirstAsync<{ total: number | null }>(
+      `SELECT COALESCE(SUM(jumlah), 0) AS total FROM pengeluaran ${wherePengeluaran}`,
+      params
+    ),
+  ]);
 
   return {
     totalPemasukan: pemasukanRow?.total ?? 0,

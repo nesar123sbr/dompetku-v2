@@ -386,6 +386,7 @@ export default function RiwayatTransaksiPage() {
   );
 
   const requestIdRef = useRef(0);
+  const isFirstMountRef = useRef(true);
 
   const [items, setItems] = useState<RiwayatTransaksiRow[]>([]);
   const [summary, setSummary] =
@@ -483,7 +484,7 @@ export default function RiwayatTransaksiPage() {
   );
 
   const loadMore = useCallback(async () => {
-    if (isLoading || isLoadingMore || !hasMore) {
+    if (isLoading || isRefreshing ||isLoadingMore || !hasMore) {
       return;
     }
 
@@ -539,6 +540,7 @@ export default function RiwayatTransaksiPage() {
     hasMore,
     isLoading,
     isLoadingMore,
+    isRefreshing,
     items.length,
     jenis,
     keyword,
@@ -546,7 +548,15 @@ export default function RiwayatTransaksiPage() {
 
   useFocusEffect(
     useCallback(() => {
-      loadFirstPage(true);
+      // ✅ PATCH 5: Cegah Keyboard Dismiss Paksa
+      if (isFirstMountRef.current) {
+        // Layar penuh (spinner) HANYA saat buka halaman pertama kali
+        loadFirstPage(true);
+        isFirstMountRef.current = false;
+      } else {
+        // Silent loader (spinner kecil) saat user mengetik / pindah tab & kembali
+        loadFirstPage(false);
+      }
 
       return () => {
         requestIdRef.current += 1;
@@ -1040,6 +1050,8 @@ export default function RiwayatTransaksiPage() {
       <View style={riwayatScreenStyles.listWrap}>
         <FlashList<ListRow>
           data={groupedRows}
+          // @ts-expect-error: Tipe FlashList v2 bentrok dengan transisi React 19. Runtime mutlak butuh properti ini.
+          estimatedItemSize={72}
           keyExtractor={keyExtractor}
           renderItem={renderRow}
           ListHeaderComponent={renderHeader}
