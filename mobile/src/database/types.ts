@@ -92,6 +92,7 @@ export type RingkasanDanaDarurat = {
   rasioMinimal: number;
   rasioIdeal: number;
   status: StatusDanaDarurat;
+  estimasiHariKekuatan: number | null;
 };
 
 export type TambahPemasukanPayload = {

@@ -89,6 +89,7 @@ const EMPTY_RINGKASAN_DANA_DARURAT: RingkasanDanaDarurat = {
   rasioMinimal: 0,
   rasioIdeal: 0,
   status: "belum_ada_data",
+  estimasiHariKekuatan: null,
 };
 
 const DOMPET_TYPE_OPTIONS: DompetTypeOption[] = [
@@ -129,6 +130,14 @@ const DOMPET_TYPE_OPTIONS: DompetTypeOption[] = [
     icon: "ellipsis-horizontal-circle-outline",
   },
 ];
+
+// ✅ TAMBAHAN PATCH: Helper visual untuk rendering hari proteksi
+function renderTeksHariProteksi(hari: number | null): string {
+  if (hari === null) return "Belum cukup data";
+  if (hari <= 0) return "0 hari (Segera isi)";
+  if (hari > 365) return "> 1 Tahun (Sangat Aman)";
+  return `${hari} hari`;
+}
 
 function getDompetTipe(item: DompetRow): DompetTipe {
   const itemWithTipe = item as DompetRow & {
@@ -1444,12 +1453,13 @@ export default function WalletTabPage() {
             </Text>
           </View>
 
+          {/* ✅ PATCH: Bagian Estimasi proteksi sudah menggunakan renderTeksHariProteksi dan properti estimasiHariKekuatan */}
           <View style={walletScreenStyles.metricRow}>
             <Text style={walletScreenStyles.metricLabel}>
               Estimasi proteksi
             </Text>
             <Text style={walletScreenStyles.metricValue}>
-              {ringkasanDanaDarurat.estimasiProteksi30Hari} hari
+              {renderTeksHariProteksi(ringkasanDanaDarurat.estimasiHariKekuatan)}
             </Text>
           </View>
         </AppCard>

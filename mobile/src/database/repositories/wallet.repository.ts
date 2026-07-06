@@ -130,6 +130,15 @@ export async function getRingkasanDanaDarurat(
     status = "aman";
   }
 
+  let estimasiHariKekuatan: number | null = null;
+
+  if (saldoDanaDarurat <= 0) {
+    estimasiHariKekuatan = 0; 
+  } else if (estimasiProteksi30Hari > 0) {
+    const rataRataHarian = estimasiProteksi30Hari / 30;
+    estimasiHariKekuatan = Math.floor(saldoDanaDarurat / rataRataHarian);
+  }
+
   return {
     saldoDanaDarurat,
     estimasiProteksi30Hari,
@@ -138,6 +147,7 @@ export async function getRingkasanDanaDarurat(
     rasioMinimal,
     rasioIdeal,
     status,
+    estimasiHariKekuatan,
   };
 }
 

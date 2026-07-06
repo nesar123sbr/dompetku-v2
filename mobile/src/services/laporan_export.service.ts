@@ -48,10 +48,24 @@ function escapeHtml(value: unknown) {
     .replace(/'/g, "&#039;");
 }
 
-function escapeCsv(value: unknown) {
-  const text = String(value ?? "");
-  const escaped = text.replace(/"/g, '""');
+function sanitizeCsvCell(value: unknown): string {
+  if (value === null || value === undefined) return '""';
+  
+  // Amankan angka agar terbaca native di Excel
+  if (typeof value === "number") {
+    if (Number.isNaN(value)) return '"0"'; 
+    return String(value); 
+  }
 
+  let text = String(value).trim();
+  
+  // Amankan dari Macro/Formula Injection
+  if (/^[=+\-@]/.test(text)) {
+    text = "'" + text;
+  }
+  
+  // Escape kutip ganda sesuai RFC 4180
+  const escaped = text.replace(/"/g, '""');
   return `"${escaped}"`;
 }
 
@@ -118,15 +132,12 @@ function getJenisLabel(jenis: LaporanBulanan["transaksi"][number]["jenis"]) {
   return jenis === "pemasukan" ? "Pemasukan" : "Pengeluaran";
 }
 
-function getSignedAmount(item: LaporanBulanan["transaksi"][number]) {
-  return item.jenis === "pemasukan" ? item.jumlah : -item.jumlah;
-}
 
-function buildCsv(laporan: LaporanBulanan) {
+
+function buildCsv(laporan: LaporanBulanan): string {
   const periodeLabel = formatPeriodeBulan(laporan.bulan);
 
-  const metaRows = [
-    ["sep=;"],
+  const metaRows: unknown[][] = [
     ["DompetKu"],
     ["Laporan Keuangan Bulanan"],
     ["Periode", periodeLabel],
@@ -139,7 +150,7 @@ function buildCsv(laporan: LaporanBulanan) {
     [],
   ];
 
-  const header = [
+  const header: unknown[] = [
     "No",
     "Tanggal",
     "Jenis",
@@ -151,26 +162,31 @@ function buildCsv(laporan: LaporanBulanan) {
     "Catatan",
   ];
 
-  const transactionRows = laporan.transaksi.map((item, index) => [
-    index + 1,
-    formatTanggalPendek(item.tanggal),
-    getJenisLabel(item.jenis),
-    item.judul,
-    item.kategori ?? "-",
-    item.dompet ?? "-",
-    item.jumlah,
-    getSignedAmount(item),
-    item.catatan ?? "",
-  ]);
+  const transactionRows: unknown[][] = laporan.transaksi.map((item, index) => {
+    // Pengeluaran dinegatifkan agar AutoSum Excel akurat
+    const signedAmount = item.jenis === 'pemasukan' 
+      ? item.jumlah 
+      : -Math.abs(item.jumlah);
 
-  const rows = [...metaRows, header, ...transactionRows];
+    return [
+      index + 1,
+      formatTanggalPendek(item.tanggal),
+      getJenisLabel(item.jenis),
+      item.judul,
+      item.kategori ?? "-",
+      item.dompet ?? "-",
+      item.jumlah,
+      signedAmount,
+      item.catatan ?? "",
+    ];
+  });
 
-  return (
-    EXCEL_BOM +
-    rows
-      .map((row) => row.map(escapeCsv).join(CSV_SEPARATOR))
-      .join(CSV_NEWLINE)
-  );
+  const rows = [...metaRows, header, ...transactionRows]
+    .map((row) => row.map(sanitizeCsvCell).join(CSV_SEPARATOR))
+    .join(CSV_NEWLINE);
+
+  // Deklarasi sep mutlak di luar agar tidak di-escape
+  return EXCEL_BOM + `sep=${CSV_SEPARATOR}${CSV_NEWLINE}` + rows;
 }
 
 function buildRingkasanCardHtml(payload: {

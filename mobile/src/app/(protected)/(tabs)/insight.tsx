@@ -58,6 +58,7 @@ const EMPTY_DANA_DARURAT: RingkasanDanaDarurat = {
   rasioMinimal: 0,
   rasioIdeal: 0,
   status: "belum_ada_data",
+  estimasiHariKekuatan: null,
 };
 
 const EMPTY_PENGINGAT: RingkasanPengingatTagihan = {
