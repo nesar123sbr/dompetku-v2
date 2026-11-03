@@ -1,15 +1,92 @@
 import "@/lib/notifications";
 
 import { useEffect } from "react";
-import { Stack } from "expo-router";
+import { type ErrorBoundaryProps, Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { COLORS } from "@/constants";
 import { AuthProvider, useAuthSession } from "@/providers/AuthProvider";
 import LocalDatabaseProvider from "@/providers/LocalDatabaseProvider";
 import CloudAutoSyncProvider from "@/providers/CloudAutoSyncProvider";
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // Aman diabaikan kalau splash sudah pernah di-hold.
+});
+
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  console.log("Global ErrorBoundary caught error:", error);
+
+  return (
+    <View style={errorStyles.container}>
+      <View style={errorStyles.card}>
+        <Text style={errorStyles.title}>Terjadi kesalahan</Text>
+        <Text style={errorStyles.message}>
+          Aplikasi mengalami kendala yang tidak terduga. Silakan coba lagi untuk memuat ulang halaman.
+        </Text>
+        <Pressable
+          style={({ pressed }) => [
+            errorStyles.button,
+            pressed && errorStyles.buttonPressed,
+          ]}
+          onPress={retry}
+        >
+          <Text style={errorStyles.buttonText}>Coba lagi</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const errorStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  message: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  button: {
+    backgroundColor: COLORS.brandPrimary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  },
+  buttonPressed: {
+    backgroundColor: COLORS.brandPrimaryDark,
+  },
+  buttonText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: "600",
+  },
 });
 
 function RootNavigator() {
