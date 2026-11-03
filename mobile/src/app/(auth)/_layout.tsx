@@ -14,5 +14,5 @@ export default function AuthLayout() {
     return <Redirect href={ROUTES.PROTECTED.DASHBOARD} />;
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack id={undefined} screenOptions={{ headerShown: false }} />;
 }

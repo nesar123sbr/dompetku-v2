@@ -27,7 +27,7 @@ function RootNavigator() {
     return null;
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack id={undefined} screenOptions={{ headerShown: false }} />;
 }
 
 export default function RootLayout() {

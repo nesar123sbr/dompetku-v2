@@ -27,6 +27,7 @@ export default function TabLayout() {
   return (
     <>
       <Tabs
+        id={undefined}
         screenOptions={{
           ...getTabScreenOptions(insets.bottom, width, height),
           headerTitle: () => <BrandLogo variant="header" />,

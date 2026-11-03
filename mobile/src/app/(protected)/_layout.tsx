@@ -18,7 +18,7 @@ export default function ProtectedLayout() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack id={undefined} screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="pengingat" options={{ headerShown: false }} />
       <Stack.Screen name="riwayat-transaksi" options={{ headerShown: false }} />
