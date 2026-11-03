@@ -62,6 +62,38 @@ export async function simpanAnggaranBulanan(
 
   const now = getNowIso();
   const bulan = payload.bulan ?? getBulanIni();
+  const kategoriId = payload.kategoriId ?? null;
+
+  if (kategoriId === null) {
+    const existingNullRow = await db.getFirstAsync<{ id: string }>(
+      `SELECT id FROM anggaran_bulanan WHERE bulan = $bulan AND kategori_id IS NULL LIMIT 1`,
+      { $bulan: bulan }
+    );
+
+    if (existingNullRow) {
+      await db.runAsync(
+        `
+          UPDATE anggaran_bulanan
+          SET
+            nama = $nama,
+            batas_nominal = $batas_nominal,
+            ambang_peringatan_persen = $ambang,
+            is_aktif = 1,
+            updated_at = $updated_at
+          WHERE id = $id
+        `,
+        {
+          $id: existingNullRow.id,
+          $nama: nama,
+          $batas_nominal: payload.batasNominal,
+          $ambang: payload.ambangPeringatanPersen ?? 0.8,
+          $updated_at: now,
+        }
+      );
+      return;
+    }
+  }
+
   const id = createLocalId("anggaran");
 
   await db.runAsync(
@@ -98,7 +130,7 @@ export async function simpanAnggaranBulanan(
       $id: id,
       $bulan: bulan,
       $nama: nama,
-      $kategori_id: payload.kategoriId ?? null,
+      $kategori_id: kategoriId,
       $batas_nominal: payload.batasNominal,
       $ambang: payload.ambangPeringatanPersen ?? 0.8,
       $created_at: now,
@@ -127,9 +159,13 @@ export async function ubahAnggaranBulananLokal(
     throw new Error("Batas anggaran harus lebih dari 0.");
   }
 
-  const anggaran = await db.getFirstAsync<AnggaranKelolaRow>(
+  const anggaran = await db.getFirstAsync<{
+    id: string;
+    bulan: string;
+    is_aktif: number;
+  }>(
     `
-      SELECT id, is_aktif
+      SELECT id, bulan, is_aktif
       FROM anggaran_bulanan
       WHERE id = $id
       LIMIT 1
@@ -141,6 +177,56 @@ export async function ubahAnggaranBulananLokal(
 
   if (!anggaran || !anggaran.is_aktif) {
     throw new Error("Anggaran tidak ditemukan atau sudah tidak aktif.");
+  }
+
+  const targetKategoriId = payload.kategoriId ?? null;
+
+  if (targetKategoriId === null) {
+    const duplikat = await db.getFirstAsync<{ id: string; is_aktif: number }>(
+      `
+        SELECT id, is_aktif
+        FROM anggaran_bulanan
+        WHERE id != $id
+          AND bulan = $bulan
+          AND kategori_id IS NULL
+          AND is_aktif = 1
+        LIMIT 1
+      `,
+      {
+        $id: payload.id,
+        $bulan: anggaran.bulan,
+      }
+    );
+
+    if (duplikat) {
+      throw new Error("Sudah ada anggaran untuk kategori ini di bulan tersebut.");
+    }
+  } else {
+    const duplikat = await db.getFirstAsync<{ id: string; is_aktif: number }>(
+      `
+        SELECT id, is_aktif
+        FROM anggaran_bulanan
+        WHERE id != $id
+          AND bulan = $bulan
+          AND kategori_id = $kategori_id
+        LIMIT 1
+      `,
+      {
+        $id: payload.id,
+        $bulan: anggaran.bulan,
+        $kategori_id: targetKategoriId,
+      }
+    );
+
+    if (duplikat) {
+      if (duplikat.is_aktif === 1) {
+        throw new Error("Sudah ada anggaran untuk kategori ini di bulan tersebut.");
+      } else {
+        throw new Error(
+          "Kategori ini pernah punya anggaran di bulan tersebut. Pilih kategori lain, atau buat anggaran baru dengan kategori itu lewat tombol Simpan anggaran."
+        );
+      }
+    }
   }
 
   const now = getNowIso();
@@ -161,7 +247,7 @@ export async function ubahAnggaranBulananLokal(
     {
       $id: payload.id,
       $nama: nama,
-      $kategori_id: payload.kategoriId ?? null,
+      $kategori_id: targetKategoriId,
       $batas_nominal: payload.batasNominal,
       $ambang: payload.ambangPeringatanPersen ?? 0.8,
       $updated_at: now,
