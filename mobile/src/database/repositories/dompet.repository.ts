@@ -349,6 +349,7 @@ export async function nonaktifkanDompetLokal(
     const dompet = await txn.getFirstAsync<{
       id: string;
       nama: string;
+      saldo_saat_ini: number;
       is_default: number;
       is_aktif: number;
     }>(
@@ -358,6 +359,12 @@ export async function nonaktifkanDompetLokal(
 
     if (!dompet || !dompet.is_aktif) {
       throw new Error("Dompet tidak ditemukan atau sudah tidak aktif.");
+    }
+
+    if (Math.abs(dompet.saldo_saat_ini ?? 0) >= 1) {
+      throw new Error(
+        `Dompet "${dompet.nama}" masih berisi saldo. Pindahkan dulu lewat Pindah dompet, atau koreksi saldo menjadi 0, baru hapus.`
+      );
     }
 
     await txn.runAsync(
