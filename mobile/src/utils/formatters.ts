@@ -136,5 +136,5 @@ export function formatLabelPengulangan(value: PengingatPengulangan) {
 
 export function formatJamMenit(value: string) {
   if (!value) return "--:--";
-  return value;
+  return value.slice(0, 5);
 }

@@ -48,12 +48,15 @@ function buildReminderTriggerDate(
     return null;
   }
 
-  if (!/^\d{2}:\d{2}$/.test(jamPengingat)) {
+  const normalizedJam =
+    typeof jamPengingat === "string" ? jamPengingat.slice(0, 5) : "";
+
+  if (!/^\d{2}:\d{2}$/.test(normalizedJam)) {
     return null;
   }
 
   const [year, month, day] = tanggalJatuhTempo.split("-").map(Number);
-  const [hour, minute] = jamPengingat.split(":").map(Number);
+  const [hour, minute] = normalizedJam.split(":").map(Number);
 
   const date = new Date(year, month - 1, day, hour, minute, 0, 0);
 

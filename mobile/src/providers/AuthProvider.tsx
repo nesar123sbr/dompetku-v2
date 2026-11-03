@@ -18,6 +18,8 @@ import {
   type AkunSupabaseLokalInfo,
 } from "@/database";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { getLocalNotificationPermissionSnapshotAsync } from "@/lib/notifications";
+import { sinkronkanNotifikasiPengingatAktif } from "@/services/pengingat.service";
 import {
   catatSessionAktifKePengaturanLokal,
   daftarAkunDenganEmail,
@@ -448,6 +450,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
 
     const result = await sinkronisasiCloudSekarang(db, session.user);
+
+    if (result.pulled.pengingatTagihan > 0) {
+      try {
+        const permission = await getLocalNotificationPermissionSnapshotAsync();
+        if (permission.granted) {
+          await sinkronkanNotifikasiPengingatAktif(db);
+        }
+      } catch (error) {
+        console.log("Gagal menjadwalkan notifikasi pengingat hasil pull:", error);
+      }
+    }
 
     await refreshLocalState();
 
