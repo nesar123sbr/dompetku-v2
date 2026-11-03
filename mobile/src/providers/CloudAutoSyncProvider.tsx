@@ -42,7 +42,7 @@ export default function CloudAutoSyncProvider({
 
   const userId = session?.user?.id ?? null;
 
-  const lastAppStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const lastAppStateRef = useRef<AppStateStatus>(AppState.currentState as AppStateStatus);
   const isSyncingRef = useRef(false);
   const lastSyncAttemptAtRef = useRef(0);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
