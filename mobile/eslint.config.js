@@ -13,6 +13,7 @@ module.exports = defineConfig([
        */
       "react-hooks/preserve-manual-memoization": "warn",
       "react-hooks/set-state-in-effect": "warn",
+      "import/namespace": "warn",
     },
   },
   {
