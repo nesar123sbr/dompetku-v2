@@ -15,3 +15,6 @@ supabase/tmp/
 *.log
 *.bak
 *.orig
+
+# Repomix output
+repomix-output.*
