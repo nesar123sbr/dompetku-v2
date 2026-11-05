@@ -3,9 +3,9 @@ import { ROUTES } from "@/constants";
 import { useAuthSession } from "@/providers/AuthProvider";
 
 export default function IndexPage() {
-  const { session, isGuestMode } = useAuthSession();
+  const { canAccessApp } = useAuthSession();
 
-  if (session || isGuestMode) {
+  if (canAccessApp) {
     return <Redirect href={ROUTES.PROTECTED.DASHBOARD} />;
   }
 

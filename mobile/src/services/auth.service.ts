@@ -5,8 +5,10 @@ import {
   catatAkunSupabaseLokal,
   getApakahAdaDataLokalBermakna,
   getInfoAkunSupabaseLokal,
+  selaraskanPemilikDataLokal,
   turunkanModeSetelahKeluarAkun,
 } from "@/database";
+import { batalkanSemuaNotifikasiTerjadwal } from "@/lib/notifications";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type SignUpPayload = {
@@ -79,6 +81,11 @@ export async function catatSessionAktifKePengaturanLokal(
   db: SQLiteDatabase,
   user: User
 ) {
+  const { dataDibersihkan } = await selaraskanPemilikDataLokal(db, user.id);
+  if (dataDibersihkan) {
+    await batalkanSemuaNotifikasiTerjadwal();
+  }
+
   const currentInfo = await getInfoAkunSupabaseLokal(db);
 
   const inferredPending =
@@ -126,12 +133,28 @@ export async function daftarAkunDenganEmail(
     }
 
     if (data.session && data.user) {
+      const { dataDibersihkan } = await selaraskanPemilikDataLokal(
+        db,
+        data.user.id
+      );
+      if (dataDibersihkan) {
+        await batalkanSemuaNotifikasiTerjadwal();
+      }
+      const updatedHasLocalData = await getApakahAdaDataLokalBermakna(db);
+
       await catatAkunSupabaseLokal(db, {
         userId: data.user.id,
         email: data.user.email ?? normalizedEmail,
         nama: getNamaDariUser(data.user),
-        butuhSinkronisasiAwal: hasLocalData,
+        butuhSinkronisasiAwal: updatedHasLocalData,
       });
+
+      return {
+        email: normalizedEmail,
+        user: data.user,
+        session: data.session,
+        hasLocalData: updatedHasLocalData,
+      };
     }
 
     return {
@@ -153,7 +176,6 @@ export async function verifikasiOtpEmailDanHubungkanDataLokal(
     const client = getSupabaseClientOrThrow();
     const normalizedEmail = payload.email.trim().toLowerCase();
     const cleanToken = payload.token.trim();
-    const hasLocalData = await getApakahAdaDataLokalBermakna(db);
 
     const { data, error } = await client.auth.verifyOtp({
       email: normalizedEmail,
@@ -178,17 +200,26 @@ export async function verifikasiOtpEmailDanHubungkanDataLokal(
       );
     }
 
+    const { dataDibersihkan } = await selaraskanPemilikDataLokal(
+      db,
+      resolvedUser.id
+    );
+    if (dataDibersihkan) {
+      await batalkanSemuaNotifikasiTerjadwal();
+    }
+    const updatedHasLocalData = await getApakahAdaDataLokalBermakna(db);
+
     await catatAkunSupabaseLokal(db, {
       userId: resolvedUser.id,
       email: resolvedUser.email ?? normalizedEmail,
       nama: getNamaDariUser(resolvedUser),
-      butuhSinkronisasiAwal: hasLocalData,
+      butuhSinkronisasiAwal: updatedHasLocalData,
     });
 
     return {
       user: resolvedUser,
       session: resolvedSession,
-      hasLocalData,
+      hasLocalData: updatedHasLocalData,
     };
   } catch (error) {
     throw new Error(getFriendlyAuthErrorMessage(error));
@@ -273,7 +304,6 @@ export async function masukDenganPasswordDanHubungkanDataLokal(
   try {
     const client = getSupabaseClientOrThrow();
     const normalizedEmail = payload.email.trim().toLowerCase();
-    const hasLocalData = await getApakahAdaDataLokalBermakna(db);
 
     const { data, error } = await client.auth.signInWithPassword({
       email: normalizedEmail,
@@ -288,17 +318,26 @@ export async function masukDenganPasswordDanHubungkanDataLokal(
       throw new Error("Sesi login tidak berhasil dibentuk.");
     }
 
+    const { dataDibersihkan } = await selaraskanPemilikDataLokal(
+      db,
+      data.user.id
+    );
+    if (dataDibersihkan) {
+      await batalkanSemuaNotifikasiTerjadwal();
+    }
+    const updatedHasLocalData = await getApakahAdaDataLokalBermakna(db);
+
     await catatAkunSupabaseLokal(db, {
       userId: data.user.id,
       email: data.user.email ?? normalizedEmail,
       nama: getNamaDariUser(data.user),
-      butuhSinkronisasiAwal: hasLocalData,
+      butuhSinkronisasiAwal: updatedHasLocalData,
     });
 
     return {
       user: data.user,
       session: data.session,
-      hasLocalData,
+      hasLocalData: updatedHasLocalData,
     };
   } catch (error) {
     throw new Error(getFriendlyAuthErrorMessage(error));
@@ -314,11 +353,16 @@ export async function keluarAkunDanKembaliKeModeLokal(
     const { error } = await client.auth.signOut();
 
     if (error) {
-      throw error;
+      await client.auth.signOut({ scope: "local" }).catch(() => {});
     }
 
-    return turunkanModeSetelahKeluarAkun(db);
-  } catch (error) {
-    throw new Error(getFriendlyAuthErrorMessage(error));
+    return await turunkanModeSetelahKeluarAkun(db);
+  } catch {
+    try {
+      if (supabase) {
+        await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      }
+    } catch {}
+    return await turunkanModeSetelahKeluarAkun(db);
   }
 }

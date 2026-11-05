@@ -126,6 +126,7 @@ export type CloudDompetRow = {
   is_aktif: boolean;
   created_at: string;
   updated_at: string;
+  synced_at?: string;
 };
 
 export type CloudKategoriPemasukanRow = {
@@ -138,6 +139,7 @@ export type CloudKategoriPemasukanRow = {
   is_aktif: boolean;
   created_at: string;
   updated_at: string;
+  synced_at?: string;
 };
 
 export type CloudKategoriPengeluaranRow = {
@@ -151,6 +153,7 @@ export type CloudKategoriPengeluaranRow = {
   is_aktif: boolean;
   created_at: string;
   updated_at: string;
+  synced_at?: string;
 };
 
 export type CloudPemasukanRow = {
@@ -165,6 +168,7 @@ export type CloudPemasukanRow = {
   is_deleted: boolean | null;
   created_at: string;
   updated_at: string;
+  synced_at?: string;
 };
 
 export type CloudPengeluaranRow = {
@@ -180,6 +184,7 @@ export type CloudPengeluaranRow = {
   is_deleted: boolean | null;
   created_at: string;
   updated_at: string;
+  synced_at?: string;
 };
 
 export type CloudPengingatTagihanRow = {
@@ -195,6 +200,7 @@ export type CloudPengingatTagihanRow = {
   notifikasi_diaktifkan: boolean;
   created_at: string;
   updated_at: string;
+  synced_at?: string;
 };
 
 export type CloudTransferDompetRow = {
@@ -207,6 +213,7 @@ export type CloudTransferDompetRow = {
   sumber_dana_darurat: boolean;
   created_at: string;
   updated_at: string;
+  synced_at?: string;
 };
 
 export type CloudAnggaranBulananRow = {
@@ -219,6 +226,7 @@ export type CloudAnggaranBulananRow = {
   is_aktif: boolean;
   created_at: string;
   updated_at: string;
+  synced_at?: string;
 };
 
 export type BundleSinkronisasiCloud = {
@@ -439,7 +447,8 @@ export async function terapkanBundleCloudKeSQLite(
          ON CONFLICT(id) DO UPDATE SET 
            nama = excluded.nama, jenis = excluded.jenis, tipe_dompet = excluded.tipe_dompet, 
            saldo_saat_ini = excluded.saldo_saat_ini, is_default = excluded.is_default, 
-           is_aktif = excluded.is_aktif, created_at = excluded.created_at, updated_at = excluded.updated_at`
+           is_aktif = excluded.is_aktif, created_at = excluded.created_at, updated_at = excluded.updated_at
+         WHERE julianday(excluded.updated_at) >= julianday(dompet.updated_at)`
       );
       try {
         for (const item of bundle.dompet) {
@@ -467,7 +476,8 @@ export async function terapkanBundleCloudKeSQLite(
          VALUES ($id, $nama, $ikon, $warna, $urutan, $is_bawaan, $is_aktif, $created_at, $updated_at)
          ON CONFLICT(id) DO UPDATE SET 
            nama = excluded.nama, ikon = excluded.ikon, warna = excluded.warna, urutan = excluded.urutan, 
-           is_bawaan = excluded.is_bawaan, is_aktif = excluded.is_aktif, created_at = excluded.created_at, updated_at = excluded.updated_at`
+           is_bawaan = excluded.is_bawaan, is_aktif = excluded.is_aktif, created_at = excluded.created_at, updated_at = excluded.updated_at
+         WHERE julianday(excluded.updated_at) >= julianday(kategori_pemasukan.updated_at)`
       );
       try {
         for (const item of bundle.kategoriPemasukan) {
@@ -495,7 +505,8 @@ export async function terapkanBundleCloudKeSQLite(
          VALUES ($id, $nama, $kelompok, $ikon, $warna, $urutan, $is_bawaan, $is_aktif, $created_at, $updated_at)
          ON CONFLICT(id) DO UPDATE SET 
            nama = excluded.nama, kelompok = excluded.kelompok, ikon = excluded.ikon, warna = excluded.warna, 
-           urutan = excluded.urutan, is_bawaan = excluded.is_bawaan, is_aktif = excluded.is_aktif, created_at = excluded.created_at, updated_at = excluded.updated_at`
+           urutan = excluded.urutan, is_bawaan = excluded.is_bawaan, is_aktif = excluded.is_aktif, created_at = excluded.created_at, updated_at = excluded.updated_at
+         WHERE julianday(excluded.updated_at) >= julianday(kategori_pengeluaran.updated_at)`
       );
       try {
         for (const item of bundle.kategoriPengeluaran) {
@@ -525,7 +536,8 @@ export async function terapkanBundleCloudKeSQLite(
          ON CONFLICT(id) DO UPDATE SET 
            dompet_id = excluded.dompet_id, kategori_id = excluded.kategori_id, judul = excluded.judul, 
            catatan = excluded.catatan, jumlah = excluded.jumlah, tanggal_transaksi = excluded.tanggal_transaksi, 
-           sumber_data = excluded.sumber_data, is_deleted = excluded.is_deleted, created_at = excluded.created_at, updated_at = excluded.updated_at`
+           sumber_data = excluded.sumber_data, is_deleted = excluded.is_deleted, created_at = excluded.created_at, updated_at = excluded.updated_at
+         WHERE julianday(excluded.updated_at) >= julianday(pemasukan.updated_at)`
       );
       try {
         for (const item of bundle.pemasukan) {
@@ -557,7 +569,8 @@ export async function terapkanBundleCloudKeSQLite(
            dompet_id = excluded.dompet_id, kategori_id = excluded.kategori_id, judul = excluded.judul, 
            catatan = excluded.catatan, jumlah = excluded.jumlah, tanggal_transaksi = excluded.tanggal_transaksi, 
            pakai_dana_darurat = excluded.pakai_dana_darurat, sumber_data = excluded.sumber_data, 
-           is_deleted = excluded.is_deleted, created_at = excluded.created_at, updated_at = excluded.updated_at`
+           is_deleted = excluded.is_deleted, created_at = excluded.created_at, updated_at = excluded.updated_at
+         WHERE julianday(excluded.updated_at) >= julianday(pengeluaran.updated_at)`
       );
       try {
         for (const item of bundle.pengeluaran) {
@@ -590,7 +603,8 @@ export async function terapkanBundleCloudKeSQLite(
            judul = excluded.judul, catatan = excluded.catatan, nominal = excluded.nominal, 
            dompet_id = excluded.dompet_id, tanggal_jatuh_tempo = excluded.tanggal_jatuh_tempo, 
            status = excluded.status, pengulangan = excluded.pengulangan, jam_pengingat = excluded.jam_pengingat, 
-           notifikasi_diaktifkan = excluded.notifikasi_diaktifkan, created_at = excluded.created_at, updated_at = excluded.updated_at`
+           notifikasi_diaktifkan = excluded.notifikasi_diaktifkan, created_at = excluded.created_at, updated_at = excluded.updated_at
+         WHERE julianday(excluded.updated_at) >= julianday(pengingat_tagihan.updated_at)`
       );
       try {
         for (const item of bundle.pengingatTagihan) {
@@ -603,7 +617,7 @@ export async function terapkanBundleCloudKeSQLite(
             $tanggal: item.tanggal_jatuh_tempo,
             $status: item.status,
             $pengulangan: item.pengulangan,
-            $jam: item.jam_pengingat,
+            $jam: String(item.jam_pengingat ?? "09:00").slice(0, 5),
             $notif: item.notifikasi_diaktifkan ? 1 : 0,
             $created_at: item.created_at,
             $updated_at: item.updated_at,
@@ -622,7 +636,8 @@ export async function terapkanBundleCloudKeSQLite(
          ON CONFLICT(id) DO UPDATE SET 
            dompet_sumber_id = excluded.dompet_sumber_id, dompet_tujuan_id = excluded.dompet_tujuan_id, 
            jumlah = excluded.jumlah, tanggal_transfer = excluded.tanggal_transfer, catatan = excluded.catatan, 
-           sumber_dana_darurat = excluded.sumber_dana_darurat, created_at = excluded.created_at, updated_at = excluded.updated_at`
+           sumber_dana_darurat = excluded.sumber_dana_darurat, created_at = excluded.created_at, updated_at = excluded.updated_at
+         WHERE julianday(excluded.updated_at) >= julianday(transfer_dompet.updated_at)`
       );
       try {
         for (const item of bundle.transferDompet) {
@@ -645,16 +660,40 @@ export async function terapkanBundleCloudKeSQLite(
 
     // 8. Anggaran Bulanan
     if (bundle.anggaranBulanan.length > 0) {
+      const sortedAnggaran = [...bundle.anggaranBulanan].sort((a, b) => {
+        const aAktif = a.is_aktif ? 1 : 0;
+        const bAktif = b.is_aktif ? 1 : 0;
+        return aAktif - bAktif;
+      });
+
+      const deactStmt = await txn.prepareAsync(
+        `UPDATE anggaran_bulanan
+         SET is_aktif = 0
+         WHERE bulan = $b
+           AND COALESCE(kategori_id, '') = COALESCE($k, '')
+           AND id <> $id
+           AND is_aktif = 1`
+      );
+
       const stmt = await txn.prepareAsync(
         `INSERT INTO anggaran_bulanan (id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at) 
          VALUES ($id, $bulan, $nama, $kategori_id, $batas, $ambang, $is_aktif, $created_at, $updated_at)
          ON CONFLICT(id) DO UPDATE SET 
            bulan = excluded.bulan, nama = excluded.nama, kategori_id = excluded.kategori_id, 
            batas_nominal = excluded.batas_nominal, ambang_peringatan_persen = excluded.ambang_peringatan_persen, 
-           is_aktif = excluded.is_aktif, created_at = excluded.created_at, updated_at = excluded.updated_at`
+           is_aktif = excluded.is_aktif, created_at = excluded.created_at, updated_at = excluded.updated_at
+         WHERE julianday(excluded.updated_at) >= julianday(anggaran_bulanan.updated_at)`
       );
       try {
-        for (const item of bundle.anggaranBulanan) {
+        for (const item of sortedAnggaran) {
+          if (item.is_aktif) {
+            await deactStmt.executeAsync({
+              $b: item.bulan,
+              $k: item.kategori_id_lokal ?? "",
+              $id: item.id_lokal,
+            });
+          }
+
           await stmt.executeAsync({
             $id: item.id_lokal,
             $bulan: item.bulan,
@@ -668,6 +707,7 @@ export async function terapkanBundleCloudKeSQLite(
           });
         }
       } finally {
+        await deactStmt.finalizeAsync();
         await stmt.finalizeAsync();
       }
     }

@@ -47,6 +47,15 @@ function mapTipeDompetKeJenis(tipe: DompetTipe): DompetJenis {
   return "utama";
 }
 
+function formatRupiah(value: number) {
+  const nominal = Number.isFinite(value) ? value : 0;
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(nominal);
+}
+
 async function ensureKoreksiSaldoDompetTable(db: SQLiteDatabase) {
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS koreksi_saldo_dompet (
@@ -353,7 +362,7 @@ export async function nonaktifkanDompetLokal(
       is_default: number;
       is_aktif: number;
     }>(
-      `SELECT id, nama, is_default, is_aktif FROM dompet WHERE id = $dompet_id LIMIT 1`,
+      `SELECT id, nama, saldo_saat_ini, is_default, is_aktif FROM dompet WHERE id = $dompet_id LIMIT 1`,
       { $dompet_id: dompetId }
     );
 
@@ -361,9 +370,11 @@ export async function nonaktifkanDompetLokal(
       throw new Error("Dompet tidak ditemukan atau sudah tidak aktif.");
     }
 
-    if (Math.abs(dompet.saldo_saat_ini ?? 0) >= 1) {
+    if (Math.abs(dompet.saldo_saat_ini ?? 0) > 0) {
       throw new Error(
-        `Dompet "${dompet.nama}" masih berisi saldo. Pindahkan dulu lewat Pindah dompet, atau koreksi saldo menjadi 0, baru hapus.`
+        "Saldo dompet masih " +
+          formatRupiah(dompet.saldo_saat_ini) +
+          ". Pindahkan dulu ke dompet lain lewat Pindah dompet, atau ubah saldo menjadi 0 sebelum menghapus."
       );
     }
 

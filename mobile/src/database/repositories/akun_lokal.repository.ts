@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
 import { MODE_PENGGUNAAN, PENGATURAN_KEY } from "../constants";
+import { seedDefaultData } from "../migrations";
 import type { ModePenggunaan } from "../types";
 import {
   getNilaiPengaturanTeks,
@@ -199,6 +200,76 @@ export async function bersihkanAkunSupabaseLokal(db: SQLiteDatabase) {
     PENGATURAN_KEY.AKUN_TERAKHIR_SINKRONISASI_AT,
     ""
   );
+
+  await setNilaiPengaturanTeks(
+    db,
+    PENGATURAN_KEY.AKUN_CURSOR_PULL_CLOUD,
+    ""
+  );
+}
+
+export async function selaraskanPemilikDataLokal(
+  db: SQLiteDatabase,
+  userId: string
+): Promise<{ dataDibersihkan: boolean }> {
+  const pemilik = emptyToNull(
+    await getNilaiPengaturanTeks(
+      db,
+      PENGATURAN_KEY.PEMILIK_DATA_LOKAL_USER_ID
+    )
+  );
+
+  if (pemilik && pemilik !== userId) {
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      await txn.execAsync(`
+        DELETE FROM koreksi_saldo_dompet;
+        DELETE FROM anggaran_bulanan;
+        DELETE FROM pengingat_tagihan;
+        DELETE FROM transfer_dompet;
+        DELETE FROM pemasukan;
+        DELETE FROM pengeluaran;
+        DELETE FROM kategori_pengeluaran;
+        DELETE FROM kategori_pemasukan;
+        DELETE FROM dompet;
+      `);
+
+      await setNilaiPengaturanTeks(
+        txn,
+        PENGATURAN_KEY.AKUN_TERAKHIR_SINKRONISASI_AT,
+        ""
+      );
+      await setNilaiPengaturanTeks(
+        txn,
+        PENGATURAN_KEY.AKUN_CURSOR_PULL_CLOUD,
+        ""
+      );
+      await setNilaiPengaturanTeks(
+        txn,
+        PENGATURAN_KEY.AKUN_PERLU_SINKRONISASI_AWAL,
+        "0"
+      );
+    });
+
+    await seedDefaultData(db);
+
+    await setNilaiPengaturanTeks(
+      db,
+      PENGATURAN_KEY.PEMILIK_DATA_LOKAL_USER_ID,
+      userId
+    );
+
+    return { dataDibersihkan: true };
+  }
+
+  if (!pemilik) {
+    await setNilaiPengaturanTeks(
+      db,
+      PENGATURAN_KEY.PEMILIK_DATA_LOKAL_USER_ID,
+      userId
+    );
+  }
+
+  return { dataDibersihkan: false };
 }
 
 export async function turunkanModeSetelahKeluarAkun(

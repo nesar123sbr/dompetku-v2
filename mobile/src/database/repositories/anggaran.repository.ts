@@ -63,15 +63,26 @@ export async function simpanAnggaranBulanan(
   const now = getNowIso();
   const bulan = payload.bulan ?? getBulanIni();
   const kategoriId = payload.kategoriId ?? null;
+  const ambang = payload.ambangPeringatanPersen ?? 0.8;
 
-  if (kategoriId === null) {
-    const existingNullRow = await db.getFirstAsync<{ id: string }>(
-      `SELECT id FROM anggaran_bulanan WHERE bulan = $bulan AND kategori_id IS NULL LIMIT 1`,
-      { $bulan: bulan }
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const existingActiveRow = await txn.getFirstAsync<{ id: string }>(
+      `
+        SELECT id
+        FROM anggaran_bulanan
+        WHERE bulan = $bulan
+          AND COALESCE(kategori_id, '') = COALESCE($kategori_id, '')
+          AND is_aktif = 1
+        LIMIT 1
+      `,
+      {
+        $bulan: bulan,
+        $kategori_id: kategoriId ?? "",
+      }
     );
 
-    if (existingNullRow) {
-      await db.runAsync(
+    if (existingActiveRow) {
+      await txn.runAsync(
         `
           UPDATE anggaran_bulanan
           SET
@@ -83,60 +94,52 @@ export async function simpanAnggaranBulanan(
           WHERE id = $id
         `,
         {
-          $id: existingNullRow.id,
+          $id: existingActiveRow.id,
           $nama: nama,
           $batas_nominal: payload.batasNominal,
-          $ambang: payload.ambangPeringatanPersen ?? 0.8,
+          $ambang: ambang,
           $updated_at: now,
         }
       );
-      return;
+    } else {
+      const id = createLocalId("anggaran");
+      await txn.runAsync(
+        `
+          INSERT INTO anggaran_bulanan (
+            id,
+            bulan,
+            nama,
+            kategori_id,
+            batas_nominal,
+            ambang_peringatan_persen,
+            is_aktif,
+            created_at,
+            updated_at
+          ) VALUES (
+            $id,
+            $bulan,
+            $nama,
+            $kategori_id,
+            $batas_nominal,
+            $ambang,
+            1,
+            $created_at,
+            $updated_at
+          )
+        `,
+        {
+          $id: id,
+          $bulan: bulan,
+          $nama: nama,
+          $kategori_id: kategoriId,
+          $batas_nominal: payload.batasNominal,
+          $ambang: ambang,
+          $created_at: now,
+          $updated_at: now,
+        }
+      );
     }
-  }
-
-  const id = createLocalId("anggaran");
-
-  await db.runAsync(
-    `
-      INSERT INTO anggaran_bulanan (
-        id,
-        bulan,
-        nama,
-        kategori_id,
-        batas_nominal,
-        ambang_peringatan_persen,
-        is_aktif,
-        created_at,
-        updated_at
-      ) VALUES (
-        $id,
-        $bulan,
-        $nama,
-        $kategori_id,
-        $batas_nominal,
-        $ambang,
-        1,
-        $created_at,
-        $updated_at
-      )
-      ON CONFLICT(bulan, kategori_id) DO UPDATE SET
-        nama = excluded.nama,
-        batas_nominal = excluded.batas_nominal,
-        ambang_peringatan_persen = excluded.ambang_peringatan_persen,
-        is_aktif = 1,
-        updated_at = excluded.updated_at
-    `,
-    {
-      $id: id,
-      $bulan: bulan,
-      $nama: nama,
-      $kategori_id: kategoriId,
-      $batas_nominal: payload.batasNominal,
-      $ambang: payload.ambangPeringatanPersen ?? 0.8,
-      $created_at: now,
-      $updated_at: now,
-    }
-  );
+  });
 }
 
 export async function ubahAnggaranBulananLokal(
@@ -181,52 +184,25 @@ export async function ubahAnggaranBulananLokal(
 
   const targetKategoriId = payload.kategoriId ?? null;
 
-  if (targetKategoriId === null) {
-    const duplikat = await db.getFirstAsync<{ id: string; is_aktif: number }>(
-      `
-        SELECT id, is_aktif
-        FROM anggaran_bulanan
-        WHERE id != $id
-          AND bulan = $bulan
-          AND kategori_id IS NULL
-          AND is_aktif = 1
-        LIMIT 1
-      `,
-      {
-        $id: payload.id,
-        $bulan: anggaran.bulan,
-      }
-    );
-
-    if (duplikat) {
-      throw new Error("Sudah ada anggaran untuk kategori ini di bulan tersebut.");
+  const duplikat = await db.getFirstAsync<{ id: string }>(
+    `
+      SELECT id
+      FROM anggaran_bulanan
+      WHERE id != $id
+        AND bulan = $bulan
+        AND COALESCE(kategori_id, '') = COALESCE($kategori_id, '')
+        AND is_aktif = 1
+      LIMIT 1
+    `,
+    {
+      $id: payload.id,
+      $bulan: anggaran.bulan,
+      $kategori_id: targetKategoriId ?? "",
     }
-  } else {
-    const duplikat = await db.getFirstAsync<{ id: string; is_aktif: number }>(
-      `
-        SELECT id, is_aktif
-        FROM anggaran_bulanan
-        WHERE id != $id
-          AND bulan = $bulan
-          AND kategori_id = $kategori_id
-        LIMIT 1
-      `,
-      {
-        $id: payload.id,
-        $bulan: anggaran.bulan,
-        $kategori_id: targetKategoriId,
-      }
-    );
+  );
 
-    if (duplikat) {
-      if (duplikat.is_aktif === 1) {
-        throw new Error("Sudah ada anggaran untuk kategori ini di bulan tersebut.");
-      } else {
-        throw new Error(
-          "Kategori ini pernah punya anggaran di bulan tersebut. Pilih kategori lain, atau buat anggaran baru dengan kategori itu lewat tombol Simpan anggaran."
-        );
-      }
-    }
+  if (duplikat) {
+    throw new Error("Sudah ada anggaran aktif untuk kategori ini di bulan ini.");
   }
 
   const now = getNowIso();
@@ -239,7 +215,6 @@ export async function ubahAnggaranBulananLokal(
         kategori_id = $kategori_id,
         batas_nominal = $batas_nominal,
         ambang_peringatan_persen = $ambang,
-        is_aktif = 1,
         updated_at = $updated_at
       WHERE id = $id
         AND is_aktif = 1

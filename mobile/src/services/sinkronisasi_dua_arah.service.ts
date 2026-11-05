@@ -2,8 +2,11 @@ import type { SQLiteDatabase } from "expo-sqlite";
 import type { User } from "@supabase/supabase-js";
 
 import {
+  PENGATURAN_KEY,
   getBundleSinkronisasiLokalSejak,
   getInfoAkunSupabaseLokal,
+  getNilaiPengaturanTeks,
+  setNilaiPengaturanTeks,
   tandaiSinkronisasiAwalSelesai,
   terapkanBundleCloudKeSQLite,
   type BundleSinkronisasiCloud,
@@ -99,7 +102,7 @@ function isCloudBundleKosong(bundle: BundleSinkronisasiCloud) {
 
 async function fetchCloudTable<T>(
   tableName: string,
-  sinceIso?: string | null
+  cursor?: string | null
 ): Promise<T[]> {
   const client = getSupabaseClientOrThrow();
   let allData: T[] = [];
@@ -110,12 +113,12 @@ async function fetchCloudTable<T>(
     let query = client
       .from(tableName)
       .select("*")
-      .order("updated_at", { ascending: true })
-      .order("id_lokal", { ascending: true }) // ✅ Perbaikan kritis untuk paginasi deterministik
+      .order("synced_at", { ascending: true })
+      .order("id_lokal", { ascending: true }) // ✅ Paginasi deterministik
       .range(from, from + step - 1);
 
-    if (sinceIso) {
-      query = query.gt("updated_at", sinceIso);
+    if (cursor) {
+      query = query.gt("synced_at", cursor);
     }
 
     const { data, error } = await query;
@@ -138,7 +141,7 @@ async function fetchCloudTable<T>(
 }
 
 async function fetchCloudBundleSince(
-  sinceIso?: string | null
+  cursor?: string | null
 ): Promise<BundleSinkronisasiCloud> {
   const [
     dompet,
@@ -150,14 +153,14 @@ async function fetchCloudBundleSince(
     transferDompet,
     anggaranBulanan,
   ] = await Promise.all([
-    fetchCloudTable<CloudDompetRow>("dompet", sinceIso),
-    fetchCloudTable<CloudKategoriPemasukanRow>("kategori_pemasukan", sinceIso),
-    fetchCloudTable<CloudKategoriPengeluaranRow>("kategori_pengeluaran", sinceIso),
-    fetchCloudTable<CloudPemasukanRow>("pemasukan", sinceIso),
-    fetchCloudTable<CloudPengeluaranRow>("pengeluaran", sinceIso),
-    fetchCloudTable<CloudPengingatTagihanRow>("pengingat_tagihan", sinceIso),
-    fetchCloudTable<CloudTransferDompetRow>("transfer_dompet", sinceIso),
-    fetchCloudTable<CloudAnggaranBulananRow>("anggaran_bulanan", sinceIso),
+    fetchCloudTable<CloudDompetRow>("dompet", cursor),
+    fetchCloudTable<CloudKategoriPemasukanRow>("kategori_pemasukan", cursor),
+    fetchCloudTable<CloudKategoriPengeluaranRow>("kategori_pengeluaran", cursor),
+    fetchCloudTable<CloudPemasukanRow>("pemasukan", cursor),
+    fetchCloudTable<CloudPengeluaranRow>("pengeluaran", cursor),
+    fetchCloudTable<CloudPengingatTagihanRow>("pengingat_tagihan", cursor),
+    fetchCloudTable<CloudTransferDompetRow>("transfer_dompet", cursor),
+    fetchCloudTable<CloudAnggaranBulananRow>("anggaran_bulanan", cursor),
   ]);
 
   return {
@@ -170,6 +173,41 @@ async function fetchCloudBundleSince(
     transferDompet,
     anggaranBulanan,
   };
+}
+
+function getMarginCursor(cursorIso?: string | null): string | null {
+  if (!cursorIso) return null;
+  const trimmed = cursorIso.trim();
+  if (!trimmed) return null;
+  const ms = Date.parse(trimmed);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms - 5 * 60 * 1000).toISOString();
+}
+
+function getMaxSyncedAt(bundle: BundleSinkronisasiCloud): string | null {
+  let maxMs = 0;
+  let maxIso: string | null = null;
+
+  const checkItem = (item: { synced_at?: string }) => {
+    if (item.synced_at) {
+      const ms = Date.parse(item.synced_at);
+      if (Number.isFinite(ms) && ms > maxMs) {
+        maxMs = ms;
+        maxIso = item.synced_at;
+      }
+    }
+  };
+
+  bundle.dompet.forEach(checkItem);
+  bundle.kategoriPemasukan.forEach(checkItem);
+  bundle.kategoriPengeluaran.forEach(checkItem);
+  bundle.pemasukan.forEach(checkItem);
+  bundle.pengeluaran.forEach(checkItem);
+  bundle.pengingatTagihan.forEach(checkItem);
+  bundle.transferDompet.forEach(checkItem);
+  bundle.anggaranBulanan.forEach(checkItem);
+
+  return maxIso;
 }
 
 function buildCloudUpdatedMap<T extends { id_lokal: string; updated_at: string }>(
@@ -412,13 +450,21 @@ export async function sinkronisasiCloudSekarang(
   user: User
 ): Promise<RingkasanSinkronisasiDuaArah> {
   try {
+    const syncStartedAt = new Date().toISOString();
+
     const info = await getInfoAkunSupabaseLokal(db);
     const lastSyncAt = info.terakhirSinkronisasiAt;
+
+    const pullCursor = await getNilaiPengaturanTeks(
+      db,
+      PENGATURAN_KEY.AKUN_CURSOR_PULL_CLOUD
+    );
+    const queryCursor = getMarginCursor(pullCursor);
 
     const mode: "awal" | "lanjutan" =
       !lastSyncAt || info.butuhSinkronisasiAwal ? "awal" : "lanjutan";
 
-    const cloudSebelum = await fetchCloudBundleSince(lastSyncAt);
+    const cloudSebelum = await fetchCloudBundleSince(queryCursor);
 
     const freshDeviceTanpaDataUser =
       !lastSyncAt && !info.adaDataLokalBermakna;
@@ -426,14 +472,22 @@ export async function sinkronisasiCloudSekarang(
     if (freshDeviceTanpaDataUser && !isCloudBundleKosong(cloudSebelum)) {
       await terapkanBundleCloudKeSQLite(db, cloudSebelum);
 
-      const syncAt = new Date().toISOString();
-      await tandaiSinkronisasiAwalSelesai(db, syncAt);
+      const maxSynced = getMaxSyncedAt(cloudSebelum);
+      if (maxSynced) {
+        await setNilaiPengaturanTeks(
+          db,
+          PENGATURAN_KEY.AKUN_CURSOR_PULL_CLOUD,
+          maxSynced
+        );
+      }
+
+      await tandaiSinkronisasiAwalSelesai(db, syncStartedAt);
 
       return {
         mode: "awal",
         pushed: createEmptyRingkasan(),
         pulled: hitungPull(cloudSebelum),
-        lastSyncAt: syncAt,
+        lastSyncAt: syncStartedAt,
         conflictPolicy:
           "Perangkat baru tanpa data lokal mengambil data cloud terlebih dahulu supaya data lama tidak tertimpa data kosong.",
       };
@@ -448,17 +502,25 @@ export async function sinkronisasiCloudSekarang(
 
     const pushed = await pushLocalBundleKeCloud(user, lokalYangMenang);
 
-    const cloudSesudah = await fetchCloudBundleSince(lastSyncAt);
+    const cloudSesudah = await fetchCloudBundleSince(queryCursor);
     await terapkanBundleCloudKeSQLite(db, cloudSesudah);
 
-    const syncAt = new Date().toISOString();
-    await tandaiSinkronisasiAwalSelesai(db, syncAt);
+    const maxSynced = getMaxSyncedAt(cloudSesudah);
+    if (maxSynced) {
+      await setNilaiPengaturanTeks(
+        db,
+        PENGATURAN_KEY.AKUN_CURSOR_PULL_CLOUD,
+        maxSynced
+      );
+    }
+
+    await tandaiSinkronisasiAwalSelesai(db, syncStartedAt);
 
     return {
       mode,
       pushed,
       pulled: hitungPull(cloudSesudah),
-      lastSyncAt: syncAt,
+      lastSyncAt: syncStartedAt,
       conflictPolicy:
         "Data yang lebih baru akan dipakai. Kalau waktunya sama, data dari perangkat ini diprioritaskan.",
     };

@@ -657,6 +657,15 @@ export default function WalletTabPage() {
       return;
     }
 
+    if (selectedKelolaDompet.saldo_saat_ini !== 0) {
+      setFormError(
+        "Saldo dompet masih " +
+          formatRupiah(selectedKelolaDompet.saldo_saat_ini) +
+          ". Pindahkan dulu ke dompet lain lewat Pindah dompet, atau ubah saldo menjadi 0 sebelum menghapus."
+      );
+      return;
+    }
+
     const isDanaDarurat = isDompetDanaDarurat(selectedKelolaDompet);
 
     Alert.alert(

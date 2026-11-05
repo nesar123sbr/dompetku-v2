@@ -90,6 +90,7 @@ export default function ProfilTabPage() {
   const {
     akunLokal,
     isGuestMode,
+    isOfflineSession,
     isSupabaseConfigured,
     modePenggunaan,
     session,
@@ -367,6 +368,13 @@ export default function ProfilTabPage() {
         <View style={profilScreenStyles.noticeWrap}>
           <GuestModeNotice />
         </View>
+      ) : isOfflineSession ? (
+        <View style={profilScreenStyles.noticeWrap}>
+          <GuestModeNotice
+            title="Sesi akun belum aktif"
+            text="Kamu sedang offline atau sesi perlu diperbarui. Data tetap aman di HP dan akan dibackup setelah tersambung."
+          />
+        </View>
       ) : null}
 
       <AppCard style={profilScreenStyles.accountCard}>
@@ -408,7 +416,7 @@ export default function ProfilTabPage() {
           />
         ) : (
           <AppButton
-            title="Masuk / Daftar akun"
+            title={isOfflineSession ? "Masuk ulang" : "Masuk / Daftar akun"}
             style={profilScreenStyles.accountButton}
             disabled={isProcessing}
             onPress={handleNeedLogin}
@@ -623,6 +631,23 @@ export default function ProfilTabPage() {
               style={profilScreenStyles.secondaryActionButton}
               disabled={isProcessing}
               onPress={handleExitGuestMode}
+            />
+          </>
+        ) : isOfflineSession ? (
+          <>
+            <AppButton
+              title="Masuk ulang"
+              style={profilScreenStyles.actionButton}
+              disabled={isProcessing}
+              onPress={handleNeedLogin}
+            />
+
+            <AppButton
+              title={isProcessing ? "Keluar akun..." : "Keluar akun"}
+              variant="secondary"
+              style={profilScreenStyles.secondaryActionButton}
+              disabled={isProcessing}
+              onPress={confirmSignOut}
             />
           </>
         ) : session ? (

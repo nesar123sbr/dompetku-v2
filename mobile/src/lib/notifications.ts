@@ -261,6 +261,10 @@ export async function cancelScheduledNotificationIfExists(
   }
 }
 
+export async function batalkanSemuaNotifikasiTerjadwal(): Promise<void> {
+  await Notifications.cancelAllScheduledNotificationsAsync();
+}
+
 export async function openSystemNotificationSettings() {
   await Linking.openSettings();
 }

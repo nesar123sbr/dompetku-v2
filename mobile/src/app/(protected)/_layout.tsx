@@ -5,15 +5,13 @@ import { ROUTES } from "@/constants";
 import { useAuthSession } from "@/providers/AuthProvider";
 
 export default function ProtectedLayout() {
-  const { session, isReady, isGuestMode } = useAuthSession();
+  const { isReady, canAccessApp } = useAuthSession();
 
   if (!isReady) {
     return <AppLoader label="Mengecek akses..." />;
   }
 
-  const bolehMasuk = Boolean(session) || isGuestMode;
-
-  if (!bolehMasuk) {
+  if (!canAccessApp) {
     return <Redirect href={ROUTES.AUTH.SIGN_IN} />;
   }
 

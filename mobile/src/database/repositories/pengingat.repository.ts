@@ -484,3 +484,7 @@ export async function bayarPengingatTagihanLokal(
 
   return result;
 }
+
+export async function resetSemuaLokalNotifikasiId(db: SQLiteDatabase) {
+  await db.runAsync(`UPDATE pengingat_tagihan SET lokal_notifikasi_id = NULL`);
+}

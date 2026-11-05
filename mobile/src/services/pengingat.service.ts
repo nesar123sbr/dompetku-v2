@@ -5,6 +5,7 @@ import {
   bayarPengingatTagihanLokal,
   buatPengingatTagihanLokal,
   getPengingatAktifYangButuhSinkronNotifikasi,
+  resetSemuaLokalNotifikasiId,
   setLokalNotifikasiIdPengingat,
   type BayarPengingatTagihanResult,
   type BuatPengingatTagihanPayload,
@@ -12,7 +13,9 @@ import {
   type PengingatTagihanListItem,
 } from "@/database";
 import {
+  batalkanSemuaNotifikasiTerjadwal,
   cancelScheduledNotificationIfExists,
+  getLocalNotificationPermissionSnapshotAsync,
   requestLocalNotificationPermissionsAsync,
   scheduleReminderNotificationAsync,
 } from "@/lib/notifications";
@@ -131,10 +134,13 @@ export async function buatPengingatTagihanDenganNotifikasi(
   }
 }
 
-export async function sinkronkanNotifikasiPengingatAktif(
-  db: SQLiteDatabase
+async function sinkronkanNotifikasiInternal(
+  db: SQLiteDatabase,
+  requestPermission: boolean
 ) {
-  const permission = await requestLocalNotificationPermissionsAsync();
+  const permission = requestPermission
+    ? await requestLocalNotificationPermissionsAsync()
+    : await getLocalNotificationPermissionSnapshotAsync();
 
   if (!permission.granted) {
     return {
@@ -171,7 +177,7 @@ export async function sinkronkanNotifikasiPengingatAktif(
         skippedPastCount += 1;
       }
     } catch (error) {
-      console.log("sinkronkanNotifikasiPengingatAktif item error:", error);
+      console.log("sinkronkanNotifikasiInternal item error:", error);
     }
   }
 
@@ -180,6 +186,27 @@ export async function sinkronkanNotifikasiPengingatAktif(
     scheduledCount,
     skippedPastCount,
   };
+}
+
+export async function sinkronkanNotifikasiPengingatAktif(
+  db: SQLiteDatabase
+) {
+  return sinkronkanNotifikasiInternal(db, true);
+}
+
+export async function sinkronkanUlangNotifikasiSetelahSync(
+  db: SQLiteDatabase
+) {
+  const permission = await getLocalNotificationPermissionSnapshotAsync();
+
+  if (!permission.granted) {
+    return;
+  }
+
+  await batalkanSemuaNotifikasiTerjadwal();
+  await resetSemuaLokalNotifikasiId(db);
+
+  await sinkronkanNotifikasiInternal(db, false);
 }
 
 export async function tandaiPengingatTagihanSelesai(

@@ -18,8 +18,7 @@ import {
   type AkunSupabaseLokalInfo,
 } from "@/database";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import { getLocalNotificationPermissionSnapshotAsync } from "@/lib/notifications";
-import { sinkronkanNotifikasiPengingatAktif } from "@/services/pengingat.service";
+import { sinkronkanUlangNotifikasiSetelahSync } from "@/services/pengingat.service";
 import {
   catatSessionAktifKePengaturanLokal,
   daftarAkunDenganEmail,
@@ -43,6 +42,8 @@ type AuthContextValue = {
   isSupabaseConfigured: boolean;
   modePenggunaan: string;
   isGuestMode: boolean;
+  isOfflineSession: boolean;
+  canAccessApp: boolean;
   akunLokal: AkunSupabaseLokalInfo | null;
 
   enterGuestMode: () => Promise<void>;
@@ -109,6 +110,8 @@ const AuthContext = createContext<AuthContextValue>({
   isSupabaseConfigured: false,
   modePenggunaan: MODE_PENGGUNAAN.NONE,
   isGuestMode: false,
+  isOfflineSession: false,
+  canAccessApp: false,
   akunLokal: EMPTY_AKUN_LOKAL,
 
   enterGuestMode: async () => {},
@@ -421,13 +424,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
   );
 
   const signOutUser = useCallback(async () => {
+    if (session?.user) {
+      try {
+        await Promise.race([
+          sinkronisasiCloudSekarang(db, session.user),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Timeout")), 8000)
+          ),
+        ]);
+      } catch (error) {
+        console.log("signOutUser sync best-effort error:", error);
+      }
+    }
+
     const nextMode = await keluarAkunDanKembaliKeModeLokal(db);
 
     setSession(null);
     await refreshLocalState();
 
     return nextMode;
-  }, [db, refreshLocalState]);
+  }, [db, refreshLocalState, session]);
 
   const syncInitialLocalData = useCallback(async () => {
     if (!session?.user) {
@@ -453,12 +469,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     if (result.pulled.pengingatTagihan > 0) {
       try {
-        const permission = await getLocalNotificationPermissionSnapshotAsync();
-        if (permission.granted) {
-          await sinkronkanNotifikasiPengingatAktif(db);
-        }
+        await sinkronkanUlangNotifikasiSetelahSync(db);
       } catch (error) {
-        console.log("Gagal menjadwalkan notifikasi pengingat hasil pull:", error);
+        console.log("Gagal menjadwalkan ulang notifikasi pengingat hasil pull:", error);
       }
     }
 
@@ -490,6 +503,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     : localMode;
 
   const isGuestMode = modePenggunaan === MODE_PENGGUNAAN.GUEST;
+  const isOfflineSession =
+    !session &&
+    localMode === MODE_PENGGUNAAN.AUTHENTICATED &&
+    Boolean(akunLokal.authUserId);
+
+  const canAccessApp =
+    Boolean(session) || isGuestMode || isOfflineSession;
+
   const isReady = isLocalReady && isRemoteReady;
 
   const value = useMemo<AuthContextValue>(() => {
@@ -500,6 +521,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isSupabaseConfigured,
       modePenggunaan,
       isGuestMode,
+      isOfflineSession,
+      canAccessApp,
       akunLokal,
 
       enterGuestMode,
@@ -522,6 +545,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isReady,
     modePenggunaan,
     isGuestMode,
+    isOfflineSession,
+    canAccessApp,
     akunLokal,
     enterGuestMode,
     exitGuestMode,

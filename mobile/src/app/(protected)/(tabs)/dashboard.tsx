@@ -248,7 +248,7 @@ function DashboardSkeleton() {
 export default function DashboardTabPage() {
   const db = useSQLiteContext();
   const router = useRouter();
-  const { isGuestMode } = useAuthSession();
+  const { isGuestMode, isOfflineSession } = useAuthSession();
 
   const [isLoading, setIsLoading] = useState(true);
   const [showSaldo, setShowSaldo] = useState(true);
@@ -399,6 +399,8 @@ export default function DashboardTabPage() {
 
   const backupLabel = isGuestMode
     ? "Data hanya di HP ini"
+    : isOfflineSession
+    ? "Sesi offline"
     : "Data tersimpan di akun";
 
   const displayMoney = useCallback(

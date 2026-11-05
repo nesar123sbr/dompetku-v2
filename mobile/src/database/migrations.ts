@@ -1,6 +1,5 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import {
-  DATABASE_VERSION,
   MODE_PENGGUNAAN,
   PENGATURAN_KEY,
 } from "./constants";
@@ -335,6 +334,82 @@ async function createVersion8DatabaseHardening(db: SQLiteDatabase) {
   `);
 }
 
+async function createVersion9(db: SQLiteDatabase) {
+  await db.withTransactionAsync(async () => {
+    // 1. Migrasi pengaturan pemilik data lokal
+    await db.execAsync(`
+      INSERT OR IGNORE INTO pengaturan_aplikasi (kunci, nilai_teks, updated_at)
+      SELECT 'pemilik_data_lokal_user_id', nilai_teks, updated_at
+      FROM pengaturan_aplikasi
+      WHERE kunci = 'akun_supabase_user_id'
+        AND nilai_teks IS NOT NULL
+        AND TRIM(nilai_teks) != '';
+    `);
+
+    // 2. Rebuild tabel anggaran_bulanan tanpa UNIQUE(bulan, kategori_id)
+    await db.execAsync(`
+      DROP TABLE IF EXISTS anggaran_bulanan_v9;
+
+      CREATE TABLE anggaran_bulanan_v9 (
+        id TEXT PRIMARY KEY NOT NULL,
+        bulan TEXT NOT NULL,
+        nama TEXT NOT NULL,
+        kategori_id TEXT,
+        batas_nominal REAL NOT NULL CHECK (batas_nominal > 0),
+        ambang_peringatan_persen REAL NOT NULL DEFAULT 0.8,
+        is_aktif INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (kategori_id) REFERENCES kategori_pengeluaran(id) ON DELETE SET NULL
+      );
+
+      INSERT INTO anggaran_bulanan_v9 (
+        id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
+      )
+      SELECT
+        id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
+      FROM anggaran_bulanan;
+
+      DROP TABLE anggaran_bulanan;
+
+      ALTER TABLE anggaran_bulanan_v9 RENAME TO anggaran_bulanan;
+
+      UPDATE anggaran_bulanan
+      SET is_aktif = 0
+      WHERE is_aktif = 1
+        AND id NOT IN (
+          SELECT id FROM (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY bulan, COALESCE(kategori_id, '')
+                     ORDER BY updated_at DESC, id DESC
+                   ) as rn
+            FROM anggaran_bulanan
+            WHERE is_aktif = 1
+          )
+          WHERE rn = 1
+        );
+
+      CREATE INDEX IF NOT EXISTS idx_anggaran_bulanan_bulan
+        ON anggaran_bulanan (bulan, is_aktif);
+
+      CREATE INDEX IF NOT EXISTS idx_anggaran_bulanan_kategori
+        ON anggaran_bulanan (kategori_id);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_anggaran_aktif_unik
+        ON anggaran_bulanan (bulan, COALESCE(kategori_id, ''))
+        WHERE is_aktif = 1;
+    `);
+
+    // 5. Normalisasi jam_pengingat pengingat_tagihan
+    await db.execAsync(`
+      UPDATE pengingat_tagihan
+      SET jam_pengingat = substr(jam_pengingat, 1, 5)
+      WHERE length(jam_pengingat) > 5;
+    `);
+  });
+}
+
 async function seedDefaultSettings(db: SQLiteDatabase) {
   await db.runAsync(
     `
@@ -597,7 +672,7 @@ async function seedDefaultKategoriPengeluaran(db: SQLiteDatabase) {
   }
 }
 
-async function seedDefaultData(db: SQLiteDatabase) {
+export async function seedDefaultData(db: SQLiteDatabase) {
   await seedDefaultSettings(db);
   await seedDefaultWallets(db);
   await seedDefaultKategoriPemasukan(db);
@@ -653,6 +728,11 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   if (nextVersion < 8) {
     await createVersion8DatabaseHardening(db);
     nextVersion = 8;
+  }
+
+  if (nextVersion < 9) {
+    await createVersion9(db);
+    nextVersion = 9;
   }
 
   await seedDefaultData(db);

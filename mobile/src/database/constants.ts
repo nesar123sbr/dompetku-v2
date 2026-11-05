@@ -1,5 +1,5 @@
 export const DATABASE_NAME = "dompetku.db"; // TEPAT SAMA DENGAN SEBELUMNYA
-export const DATABASE_VERSION = 8; // NAIK VERSI
+export const DATABASE_VERSION = 9; // NAIK VERSI
 
 export const MODE_PENGGUNAAN = {
   NONE: "none",
@@ -15,4 +15,6 @@ export const PENGATURAN_KEY = {
   AKUN_SUPABASE_NAMA: "akun_supabase_nama",
   AKUN_PERLU_SINKRONISASI_AWAL: "akun_perlu_sinkronisasi_awal",
   AKUN_TERAKHIR_SINKRONISASI_AT: "akun_terakhir_sinkronisasi_at",
+  PEMILIK_DATA_LOKAL_USER_ID: "pemilik_data_lokal_user_id",
+  AKUN_CURSOR_PULL_CLOUD: "akun_cursor_pull_cloud",
 } as const;
