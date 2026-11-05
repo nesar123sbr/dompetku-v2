@@ -27,7 +27,7 @@ function getBulanIni() {
 
 function hitungStatus(
   persentase: number,
-  ambang: number
+  ambang: number,
 ): RingkasanAnggaranBulananItem["status"] {
   if (persentase >= 1) {
     return "melewati_batas";
@@ -48,7 +48,7 @@ export async function simpanAnggaranBulanan(
     kategoriId?: string | null;
     batasNominal: number;
     ambangPeringatanPersen?: number;
-  }
+  },
 ) {
   const nama = payload.nama.trim();
 
@@ -78,7 +78,7 @@ export async function simpanAnggaranBulanan(
       {
         $bulan: bulan,
         $kategori_id: kategoriId ?? "",
-      }
+      },
     );
 
     if (existingActiveRow) {
@@ -99,7 +99,7 @@ export async function simpanAnggaranBulanan(
           $batas_nominal: payload.batasNominal,
           $ambang: ambang,
           $updated_at: now,
-        }
+        },
       );
     } else {
       const id = createLocalId("anggaran");
@@ -136,7 +136,7 @@ export async function simpanAnggaranBulanan(
           $ambang: ambang,
           $created_at: now,
           $updated_at: now,
-        }
+        },
       );
     }
   });
@@ -150,7 +150,7 @@ export async function ubahAnggaranBulananLokal(
     kategoriId?: string | null;
     batasNominal: number;
     ambangPeringatanPersen?: number;
-  }
+  },
 ) {
   const nama = payload.nama.trim();
 
@@ -175,7 +175,7 @@ export async function ubahAnggaranBulananLokal(
     `,
     {
       $id: payload.id,
-    }
+    },
   );
 
   if (!anggaran || !anggaran.is_aktif) {
@@ -198,11 +198,13 @@ export async function ubahAnggaranBulananLokal(
       $id: payload.id,
       $bulan: anggaran.bulan,
       $kategori_id: targetKategoriId ?? "",
-    }
+    },
   );
 
   if (duplikat) {
-    throw new Error("Sudah ada anggaran aktif untuk kategori ini di bulan ini.");
+    throw new Error(
+      "Sudah ada anggaran aktif untuk kategori ini di bulan ini.",
+    );
   }
 
   const now = getNowIso();
@@ -226,13 +228,13 @@ export async function ubahAnggaranBulananLokal(
       $batas_nominal: payload.batasNominal,
       $ambang: payload.ambangPeringatanPersen ?? 0.8,
       $updated_at: now,
-    }
+    },
   );
 }
 
 export async function nonaktifkanAnggaranBulananLokal(
   db: SQLiteDatabase,
-  id: string
+  id: string,
 ) {
   const anggaran = await db.getFirstAsync<AnggaranKelolaRow>(
     `
@@ -243,7 +245,7 @@ export async function nonaktifkanAnggaranBulananLokal(
     `,
     {
       $id: id,
-    }
+    },
   );
 
   if (!anggaran || !anggaran.is_aktif) {
@@ -264,13 +266,13 @@ export async function nonaktifkanAnggaranBulananLokal(
     {
       $id: id,
       $updated_at: now,
-    }
+    },
   );
 }
 
 export async function getRingkasanAnggaranBulanan(
   db: SQLiteDatabase,
-  bulan = getBulanIni()
+  bulan = getBulanIni(),
 ): Promise<RingkasanAnggaranBulananItem[]> {
   const [year, monthIndex] = bulan.split("-").map(Number);
   const lastDay = new Date(year, monthIndex, 0).getDate();
@@ -315,7 +317,7 @@ export async function getRingkasanAnggaranBulanan(
       $bulan: bulan,
       $mulai: tanggalMulai,
       $selesai: tanggalSelesai,
-    }
+    },
   );
 
   return (rows ?? []).map((item) => {
@@ -339,7 +341,7 @@ export async function getRingkasanAnggaranBulanan(
 }
 
 export async function getRingkasanAnggaranBulanIni(
-  db: SQLiteDatabase
+  db: SQLiteDatabase,
 ): Promise<RingkasanAnggaranBulananItem[]> {
   return getRingkasanAnggaranBulanan(db);
 }
