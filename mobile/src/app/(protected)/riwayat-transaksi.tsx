@@ -51,9 +51,6 @@ const DASHBOARD_HREF = (PROTECTED_ROUTES.DASHBOARD ??
 const TRANSAKSI_HREF = (PROTECTED_ROUTES.TRANSAKSI ??
   "/(protected)/(tabs)/transaksi") as Href;
 
-const EDIT_TRANSAKSI_HREF = (PROTECTED_ROUTES.EDIT_TRANSAKSI ??
-  "/(protected)/edit-transaksi") as Href;
-
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
 type FilterJenis = "semua" | "pemasukan" | "pengeluaran";
@@ -160,7 +157,7 @@ function getMonthEndInput(date: Date) {
 
 function getDateRangeForPeriod(
   periode: FilterPeriode,
-  customMonthDate: string
+  customMonthDate: string,
 ): DateRange {
   const now = new Date();
 
@@ -297,7 +294,11 @@ function getTransactionIcon(item: RiwayatTransaksiRow): IoniconName {
   return "arrow-up";
 }
 
-const DateHeaderRow = memo(function DateHeaderRow({ label }: { label: string }) {
+const DateHeaderRow = memo(function DateHeaderRow({
+  label,
+}: {
+  label: string;
+}) {
   return <Text style={riwayatScreenStyles.dateHeader}>{label}</Text>;
 });
 
@@ -410,11 +411,7 @@ const RiwayatSearchBar = memo(function RiwayatSearchBar({
 
   return (
     <View style={riwayatScreenStyles.searchCard}>
-      <Ionicons
-        name="search-outline"
-        size={20}
-        color={COLORS.textTertiary}
-      />
+      <Ionicons name="search-outline" size={20} color={COLORS.textTertiary} />
 
       <TextInput
         value={localInput}
@@ -476,7 +473,6 @@ const RiwayatHeader = memo(function RiwayatHeader({
   summary,
   errorMessage,
 }: RiwayatHeaderProps) {
-
   return (
     <View>
       {!isTabMode ? (
@@ -544,8 +540,8 @@ const RiwayatHeader = memo(function RiwayatHeader({
                       ? isIncome
                         ? COLORS.income
                         : isExpense
-                        ? COLORS.expense
-                        : COLORS.brandPrimary
+                          ? COLORS.expense
+                          : COLORS.brandPrimary
                       : COLORS.textSecondary
                   }
                 />
@@ -624,9 +620,7 @@ const RiwayatHeader = memo(function RiwayatHeader({
       <AppCard style={riwayatScreenStyles.summaryCard}>
         <View style={riwayatScreenStyles.summaryTopRow}>
           <View>
-            <Text style={riwayatScreenStyles.summaryTitle}>
-              {periodeTitle}
-            </Text>
+            <Text style={riwayatScreenStyles.summaryTitle}>{periodeTitle}</Text>
             <Text style={riwayatScreenStyles.summarySubtitle}>
               {summary.jumlahTransaksi} transaksi ditemukan
             </Text>
@@ -714,7 +708,7 @@ export default function RiwayatTransaksiPage() {
 
   const listBottomPadding = useMemo(
     () => getFloatingTabContentPadding(insets.bottom, width, height),
-    [height, insets.bottom, width]
+    [height, insets.bottom, width],
   );
 
   const requestIdRef = useRef(0);
@@ -737,15 +731,13 @@ export default function RiwayatTransaksiPage() {
 
   const dateRange = useMemo(
     () => getDateRangeForPeriod(periode, customMonthDate),
-    [periode, customMonthDate]
+    [periode, customMonthDate],
   );
 
   const groupedRows = useMemo(() => buildGroupedRows(items), [items]);
 
   const hasActiveFilter =
-    keyword.trim().length > 0 ||
-    jenis !== "semua" ||
-    periode !== "bulan_ini";
+    keyword.trim().length > 0 || jenis !== "semua" || periode !== "bulan_ini";
 
   const loadFirstPage = useCallback(
     async (showFullLoader = false) => {
@@ -791,7 +783,7 @@ export default function RiwayatTransaksiPage() {
         setErrorMessage(
           error instanceof Error
             ? error.message
-            : "Riwayat transaksi belum berhasil dimuat."
+            : "Riwayat transaksi belum berhasil dimuat.",
         );
       } finally {
         if (requestIdRef.current !== requestId) return;
@@ -800,11 +792,11 @@ export default function RiwayatTransaksiPage() {
         setIsRefreshing(false);
       }
     },
-    [dateRange.tanggalMulai, dateRange.tanggalSelesai, db, jenis, keyword]
+    [dateRange.tanggalMulai, dateRange.tanggalSelesai, db, jenis, keyword],
   );
 
   const loadMore = useCallback(async () => {
-    if (isLoading || isRefreshing ||isLoadingMore || !hasMore) {
+    if (isLoading || isRefreshing || isLoadingMore || !hasMore) {
       return;
     }
 
@@ -827,11 +819,11 @@ export default function RiwayatTransaksiPage() {
 
       setItems((prev) => {
         const existingKeys = new Set(
-          prev.map((item) => `${item.jenis_transaksi}-${item.id}`)
+          prev.map((item) => `${item.jenis_transaksi}-${item.id}`),
         );
 
         const uniqueItems = result.filter(
-          (item) => !existingKeys.has(`${item.jenis_transaksi}-${item.id}`)
+          (item) => !existingKeys.has(`${item.jenis_transaksi}-${item.id}`),
         );
 
         return [...prev, ...uniqueItems];
@@ -846,7 +838,7 @@ export default function RiwayatTransaksiPage() {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Riwayat berikutnya belum berhasil dimuat."
+          : "Riwayat berikutnya belum berhasil dimuat.",
       );
     } finally {
       if (requestIdRef.current === requestId) {
@@ -870,7 +862,13 @@ export default function RiwayatTransaksiPage() {
   useEffect(() => {
     if (isFirstMountRef.current) return;
     loadFirstPage(false);
-  }, [keyword, jenis, dateRange.tanggalMulai, dateRange.tanggalSelesai, loadFirstPage]);
+  }, [
+    keyword,
+    jenis,
+    dateRange.tanggalMulai,
+    dateRange.tanggalSelesai,
+    loadFirstPage,
+  ]);
 
   useFocusEffect(
     useCallback(() => {
@@ -884,7 +882,7 @@ export default function RiwayatTransaksiPage() {
       return () => {
         requestIdRef.current += 1;
       };
-    }, [loadFirstPage])
+    }, [loadFirstPage]),
   );
 
   const handleBack = useCallback(() => {
@@ -907,7 +905,7 @@ export default function RiwayatTransaksiPage() {
       setJenis(nextJenis);
       resetPagingState();
     },
-    [resetPagingState]
+    [resetPagingState],
   );
 
   const handleChangePeriode = useCallback(
@@ -915,7 +913,7 @@ export default function RiwayatTransaksiPage() {
       setPeriode(nextPeriode);
       resetPagingState();
     },
-    [resetPagingState]
+    [resetPagingState],
   );
 
   const handleDebouncedSearch = useCallback(
@@ -924,7 +922,7 @@ export default function RiwayatTransaksiPage() {
       setErrorMessage("");
       resetPagingState();
     },
-    [resetPagingState]
+    [resetPagingState],
   );
 
   const handleClearSearch = useCallback(() => {
@@ -942,14 +940,12 @@ export default function RiwayatTransaksiPage() {
 
   const handleEdit = useCallback(
     (item: RiwayatTransaksiRow) => {
-      const href =
-        `${EDIT_TRANSAKSI_HREF}?id=${encodeURIComponent(
-          item.id
-        )}&jenis=${item.jenis_transaksi}` as Href;
-
-      router.push(href);
+      router.push({
+        pathname: "/edit-transaksi",
+        params: { id: item.id, jenis: item.jenis_transaksi },
+      });
     },
-    [router]
+    [router],
   );
 
   const handleDelete = useCallback(
@@ -978,22 +974,22 @@ export default function RiwayatTransaksiPage() {
 
                 Alert.alert(
                   "Berhasil",
-                  "Transaksi berhasil dihapus dan saldo sudah disesuaikan."
+                  "Transaksi berhasil dihapus dan saldo sudah disesuaikan.",
                 );
               } catch (error) {
                 console.log("handleDelete riwayat error:", error);
                 setErrorMessage(
                   error instanceof Error
                     ? error.message
-                    : "Transaksi belum berhasil dihapus."
+                    : "Transaksi belum berhasil dihapus.",
                 );
               }
             },
           },
-        ]
+        ],
       );
     },
-    [db, loadFirstPage]
+    [db, loadFirstPage],
   );
 
   const handleOpenAction = useCallback(
@@ -1021,7 +1017,7 @@ export default function RiwayatTransaksiPage() {
         },
       ]);
     },
-    [handleDelete, handleEdit]
+    [handleDelete, handleEdit],
   );
 
   const handleCustomMonthChange = useCallback(
@@ -1029,7 +1025,7 @@ export default function RiwayatTransaksiPage() {
       setCustomMonthDate(value);
       resetPagingState();
     },
-    [resetPagingState]
+    [resetPagingState],
   );
 
   const headerComponent = useMemo(
@@ -1069,7 +1065,7 @@ export default function RiwayatTransaksiPage() {
       keyword,
       periode,
       summary,
-    ]
+    ],
   );
 
   const renderRow = useCallback(
@@ -1080,7 +1076,7 @@ export default function RiwayatTransaksiPage() {
 
       return <TransactionRow item={item.item} onPress={handleOpenAction} />;
     },
-    [handleOpenAction]
+    [handleOpenAction],
   );
 
   const keyExtractor = useCallback((item: ListRow) => item.id, []);
@@ -1123,7 +1119,7 @@ export default function RiwayatTransaksiPage() {
         />
       </AppCard>
     ),
-    [handleResetFilter, hasActiveFilter, router]
+    [handleResetFilter, hasActiveFilter, router],
   );
 
   const footerComponent = useMemo(() => {
@@ -1143,7 +1139,10 @@ export default function RiwayatTransaksiPage() {
   }
 
   return (
-    <AppScreen safeTop contentContainerStyle={riwayatScreenStyles.screenContent}>
+    <AppScreen
+      safeTop
+      contentContainerStyle={riwayatScreenStyles.screenContent}
+    >
       <View style={riwayatScreenStyles.listWrap}>
         <FlashList<ListRow>
           data={groupedRows}

@@ -5,14 +5,34 @@ import type {
   StatusDanaDarurat,
 } from "@/database";
 
+const rupiahFormatter = new Intl.NumberFormat("id-ID", {
+  style: "currency",
+  currency: "IDR",
+  maximumFractionDigits: 0,
+});
+
+const persenFormatter = new Intl.NumberFormat("id-ID", {
+  style: "percent",
+  maximumFractionDigits: 0,
+});
+
+const tanggalPendekFormatter = new Intl.DateTimeFormat("id-ID", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+
+const tanggalWaktuFormatter = new Intl.DateTimeFormat("id-ID", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 export function formatRupiah(value: number) {
   const nominal = Number.isFinite(value) ? value : 0;
-
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    maximumFractionDigits: 0,
-  }).format(nominal);
+  return rupiahFormatter.format(nominal);
 }
 
 export function formatLabelModePenggunaan(mode: string) {
@@ -39,11 +59,7 @@ export function formatTanggalIndonesiaPendek(value: string) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(parsed);
+  return tanggalPendekFormatter.format(parsed);
 }
 
 export function formatTanggalWaktuIndonesia(value?: string | null) {
@@ -55,13 +71,7 @@ export function formatTanggalWaktuIndonesia(value?: string | null) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(parsed);
+  return tanggalWaktuFormatter.format(parsed);
 }
 
 export function formatJenisDompetLabel(jenis: DompetJenis) {
@@ -114,11 +124,7 @@ export function formatLabelStatusDanaDarurat(status: StatusDanaDarurat) {
 
 export function formatPersen(value: number) {
   const normalized = Number.isFinite(value) ? value : 0;
-
-  return new Intl.NumberFormat("id-ID", {
-    style: "percent",
-    maximumFractionDigits: 0,
-  }).format(normalized);
+  return persenFormatter.format(normalized);
 }
 
 export function formatLabelPengulangan(value: PengingatPengulangan) {

@@ -93,3 +93,18 @@ ReactNativeJS: 'Global ErrorBoundary caught error:', { [Error: Error code 1: no 
 
 ### 4.7 Batching & Chunking Payload Sinkronisasi (B5)
 - `mobile/src/services/sync/engine.ts`: Mengimplementasikan pembagian payload dorong (*push chunking*) dengan ukuran maksimal 300 entitas per batch dan urutan ketergantungan relasi (*foreign keys*): data master (profil, dompet, kategori) dikirim terlebih dahulu sebelum *batches* transaksi, transfer, koreksi, anggaran, dan pengingat.
+
+---
+
+## 5. Rincian Perbaikan Fase 3 (Cleaning & Modernisasi Modul)
+
+### 5.1 Generator ID Standar UUID
+- `mobile/src/database/helpers.ts`: Mengganti generator ID acak `Math.random()` dengan implementasi standar `globalThis.crypto.randomUUID()` (didukung penuh oleh mesin Hermes di React Native 0.88 dan runtime modern) dengan fallback aman, menghasilkan format UUID RFC4122 deterministik tanpa menambah dependensi pihak ketiga.
+
+### 5.2 Singleton Formatters (Performa Komputasi & Alokasi Memori)
+- `mobile/src/utils/formatters.ts`: Mengubah inisialisasi berulang `Intl.NumberFormat` dan `Intl.DateTimeFormat` menjadi *module-level singletons* (`rupiahFormatter`, `persenFormatter`, `tanggalPendekFormatter`, `tanggalWaktuFormatter`). Hal ini meniadakan *overhead* alokasi objek dan inisialisasi tabel locale pada setiap siklus render daftar transaksi dan laporan.
+- `mobile/src/services/laporan_export.service.ts`: Memodernisasi fungsi pemformatan tanggal pada ekspor laporan agar memanfaatkan formatters singleton tingkat modul.
+
+### 5.3 Modernisasi Navigasi & Pembersihan Variabel Tak Terpakai
+- `mobile/src/app/(protected)/riwayat-transaksi.tsx`: Mengganti navigasi string template `as Href` pada edit transaksi dengan sintaks rute objek resmi Expo Router (`pathname` & `params`).
+- Menghapus konstanta `EDIT_TRANSAKSI_HREF` yang tidak lagi terpakai.

@@ -71,6 +71,31 @@ function sanitizeCsvCell(value: unknown): string {
   return `"${escaped}"`;
 }
 
+const tanggalPanjangFormatter = new Intl.DateTimeFormat("id-ID", {
+  day: "2-digit",
+  month: "long",
+  year: "numeric",
+});
+
+const tanggalAngkaFormatter = new Intl.DateTimeFormat("id-ID", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
+const bulanTahunFormatter = new Intl.DateTimeFormat("id-ID", {
+  month: "long",
+  year: "numeric",
+});
+
+const tanggalWaktuCetakFormatter = new Intl.DateTimeFormat("id-ID", {
+  day: "2-digit",
+  month: "long",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 function formatTanggalIndonesia(value: string) {
   if (!value) return "-";
 
@@ -80,11 +105,7 @@ function formatTanggalIndonesia(value: string) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  }).format(parsed);
+  return tanggalPanjangFormatter.format(parsed);
 }
 
 function formatTanggalPendek(value: string) {
@@ -96,11 +117,7 @@ function formatTanggalPendek(value: string) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(parsed);
+  return tanggalAngkaFormatter.format(parsed);
 }
 
 function formatPeriodeBulan(value: string) {
@@ -119,20 +136,11 @@ function formatPeriodeBulan(value: string) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("id-ID", {
-    month: "long",
-    year: "numeric",
-  }).format(parsed);
+  return bulanTahunFormatter.format(parsed);
 }
 
 function formatTanggalCetak() {
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date());
+  return tanggalWaktuCetakFormatter.format(new Date());
 }
 
 function getJenisLabel(jenis: LaporanBulanan["transaksi"][number]["jenis"]) {
