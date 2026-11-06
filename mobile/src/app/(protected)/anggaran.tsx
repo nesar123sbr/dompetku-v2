@@ -3,6 +3,8 @@ import { Alert, Keyboard, Pressable, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 
+import Ionicons from "@expo/vector-icons/Ionicons";
+
 import {
   AppButton,
   AppCard,
@@ -14,11 +16,13 @@ import {
   StatCard,
   StatusBadge,
 } from "@/components";
-import { ROUTES } from "@/constants";
+import { COLORS, ROUTES } from "@/constants";
 import {
+  cekBisaSalinAnggaranBulanLalu,
   getKategoriPengeluaranAktif,
   getRingkasanAnggaranBulanIni,
   nonaktifkanAnggaranBulananLokal,
+  salinAnggaranBulanLalu,
   simpanAnggaranBulanan,
   ubahAnggaranBulananLokal,
   type KategoriPengeluaranRow,
@@ -35,6 +39,11 @@ import { anggaranScreenStyles } from "@assets/styles/screens/protected/anggaranS
 type LoadedAnggaranData = {
   kategoriList: KategoriPengeluaranRow[];
   anggaranList: RingkasanAnggaranBulananItem[];
+  copyStatus: {
+    bisaSalin: boolean;
+    jumlahBulanLalu: number;
+    bulanLalu: string;
+  };
 };
 
 type AnggaranBadgeVariant = "success" | "warning" | "danger" | "neutral" | "info";
@@ -76,6 +85,15 @@ export default function AnggaranPage() {
   const [anggaranList, setAnggaranList] = useState<
     RingkasanAnggaranBulananItem[]
   >([]);
+  const [copyStatus, setCopyStatus] = useState<{
+    bisaSalin: boolean;
+    jumlahBulanLalu: number;
+    bulanLalu: string;
+  }>({
+    bisaSalin: false,
+    jumlahBulanLalu: 0,
+    bulanLalu: "",
+  });
 
   const [namaAnggaran, setNamaAnggaran] = useState("");
   const [batasInput, setBatasInput] = useState("");
@@ -94,20 +112,23 @@ export default function AnggaranPage() {
   );
 
   const fetchData = useCallback(async (): Promise<LoadedAnggaranData> => {
-    const [kategoriData, anggaranData] = await Promise.all([
+    const [kategoriData, anggaranData, copyData] = await Promise.all([
       getKategoriPengeluaranAktif(db),
       getRingkasanAnggaranBulanIni(db),
+      cekBisaSalinAnggaranBulanLalu(db),
     ]);
 
     return {
       kategoriList: kategoriData,
       anggaranList: anggaranData,
+      copyStatus: copyData,
     };
   }, [db]);
 
   function applyLoadedData(data: LoadedAnggaranData) {
     setKategoriList(data.kategoriList);
     setAnggaranList(data.anggaranList);
+    setCopyStatus(data.copyStatus);
   }
 
   async function refreshData() {
@@ -276,6 +297,27 @@ export default function AnggaranPage() {
     );
   }
 
+  async function handleSalinAnggaranBulanLalu() {
+    try {
+      setIsSubmitting(true);
+      setFormError("");
+
+      const result = await salinAnggaranBulanLalu(db);
+      await refreshData();
+
+      Alert.alert("Berhasil", result.pesan);
+    } catch (error) {
+      console.log("handleSalinAnggaranBulanLalu error:", error);
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "Gagal menyalin anggaran dari bulan lalu."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   if (isLoading) {
     return <AppLoader label="Memuat anggaran..." />;
   }
@@ -293,6 +335,38 @@ export default function AnggaranPage() {
         title="Anggaran bulanan"
         subtitle="Buat batas pengeluaran supaya kamu tahu kapan belanja mulai mendekati batas aman."
       />
+
+      {copyStatus.bisaSalin && anggaranList.length === 0 ? (
+        <AppCard style={anggaranScreenStyles.card}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 6,
+            }}
+          >
+            <Ionicons name="copy-outline" size={20} color={COLORS.brandPrimary} />
+            <Text style={anggaranScreenStyles.sectionTitle}>
+              Salin anggaran bulan lalu
+            </Text>
+          </View>
+
+          <Text
+            style={[anggaranScreenStyles.formModeHelper, { marginBottom: 12 }]}
+          >
+            Bulan ini belum memiliki anggaran. Kamu memiliki{" "}
+            {copyStatus.jumlahBulanLalu} anggaran aktif di bulan lalu (
+            {copyStatus.bulanLalu}). Salin sekarang agar tidak perlu mengetik ulang?
+          </Text>
+
+          <AppButton
+            title={`Salin ${copyStatus.jumlahBulanLalu} anggaran dari bulan lalu`}
+            disabled={isSubmitting}
+            onPress={handleSalinAnggaranBulanLalu}
+          />
+        </AppCard>
+      ) : null}
 
       <AppCard style={anggaranScreenStyles.card}>
         <Text style={anggaranScreenStyles.formModeTitle}>

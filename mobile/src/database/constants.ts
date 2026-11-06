@@ -1,5 +1,5 @@
 export const DATABASE_NAME = "dompetku.db"; // TEPAT SAMA DENGAN SEBELUMNYA
-export const DATABASE_VERSION = 10; // NAIK VERSI
+export const DATABASE_VERSION = 11; // NAIK VERSI
 
 export const MODE_PENGGUNAAN = {
   NONE: "none",

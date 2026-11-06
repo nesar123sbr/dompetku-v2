@@ -467,6 +467,78 @@ async function createVersion10(db: SQLiteDatabase) {
   });
 }
 
+async function createVersion11(db: SQLiteDatabase) {
+  await db.withTransactionAsync(async () => {
+    const now = getNowIso();
+    // 1. Rebuild tabel anggaran_bulanan tanpa UNIQUE inline
+    await db.execAsync(`
+      DROP TABLE IF EXISTS anggaran_bulanan_v11;
+
+      CREATE TABLE anggaran_bulanan_v11 (
+        id TEXT PRIMARY KEY NOT NULL,
+        bulan TEXT NOT NULL,
+        nama TEXT NOT NULL,
+        kategori_id TEXT,
+        batas_nominal REAL NOT NULL CHECK (batas_nominal > 0),
+        ambang_peringatan_persen REAL NOT NULL DEFAULT 0.8,
+        is_aktif INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (kategori_id) REFERENCES kategori_pengeluaran(id) ON DELETE SET NULL
+      );
+
+      INSERT INTO anggaran_bulanan_v11 (
+        id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
+      )
+      SELECT
+        id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
+      FROM anggaran_bulanan;
+
+      DROP TABLE anggaran_bulanan;
+
+      ALTER TABLE anggaran_bulanan_v11 RENAME TO anggaran_bulanan;
+    `);
+
+    // 2. Dedupe: per (bulan, COALESCE(kategori_id, '__semua__')) pertahankan 1 baris aktif dengan updated_at terbaru,
+    // nonaktifkan sisanya dan bump updated_at agar ikut ter-push
+    await db.runAsync(
+      `
+        UPDATE anggaran_bulanan
+        SET is_aktif = 0,
+            updated_at = $now
+        WHERE is_aktif = 1
+          AND id NOT IN (
+            SELECT id FROM (
+              SELECT id,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY bulan, COALESCE(kategori_id, '__semua__')
+                       ORDER BY updated_at DESC, id DESC
+                     ) as rn
+              FROM anggaran_bulanan
+              WHERE is_aktif = 1
+            )
+            WHERE rn = 1
+          );
+      `,
+      { $now: now }
+    );
+
+    // 3. Buat partial unique index dengan sentinel '__semua__'
+    await db.execAsync(`
+      DROP INDEX IF EXISTS idx_anggaran_aktif_unik;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_anggaran_aktif_unik
+        ON anggaran_bulanan (bulan, COALESCE(kategori_id, '__semua__'))
+        WHERE is_aktif = 1;
+
+      CREATE INDEX IF NOT EXISTS idx_anggaran_bulanan_bulan
+        ON anggaran_bulanan (bulan, is_aktif);
+
+      CREATE INDEX IF NOT EXISTS idx_anggaran_bulanan_kategori
+        ON anggaran_bulanan (kategori_id);
+    `);
+  });
+}
+
 async function seedDefaultSettings(db: SQLiteDatabase) {
   await db.runAsync(
     `
@@ -796,6 +868,12 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     await createVersion10(db);
     nextVersion = 10;
     await db.execAsync("PRAGMA user_version = 10");
+  }
+
+  if (nextVersion < 11) {
+    await createVersion11(db);
+    nextVersion = 11;
+    await db.execAsync("PRAGMA user_version = 11");
   }
 
   await seedDefaultData(db);

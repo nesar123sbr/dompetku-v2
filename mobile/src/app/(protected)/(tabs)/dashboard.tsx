@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Alert, Pressable, Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { type Href, useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
@@ -12,9 +12,11 @@ import {
   ReminderCard,
 } from "@/components";
 import {
+  cekBisaSalinAnggaranBulanLalu,
   getPreviewPengingatDashboard,
   getRingkasanDashboard,
   getRingkasanFilterPeriode,
+  salinAnggaranBulanLalu,
   type PengingatTagihanListItem,
   type RingkasanDashboard,
 } from "@/database";
@@ -257,6 +259,15 @@ export default function DashboardTabPage() {
   const [previewPengingat, setPreviewPengingat] = useState<
     PengingatTagihanListItem[]
   >([]);
+  const [salinAnggaranInfo, setSalinAnggaranInfo] = useState<{
+    bisaSalin: boolean;
+    jumlahBulanLalu: number;
+    bulanLalu: string;
+  }>({
+    bisaSalin: false,
+    jumlahBulanLalu: 0,
+    bulanLalu: "",
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -271,10 +282,11 @@ export default function DashboardTabPage() {
           const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
           // 2. Tembak database secara paralel
-          const [ringkasanAllTime, ringkasanBulanIni, previewResult] = await Promise.all([
+          const [ringkasanAllTime, ringkasanBulanIni, previewResult, copyBudgetResult] = await Promise.all([
             getRingkasanDashboard(db),
             getRingkasanFilterPeriode(db, { tahunBulan: currentMonth }),
             getPreviewPengingatDashboard(db, 3),
+            cekBisaSalinAnggaranBulanLalu(db, currentMonth),
           ]);
 
           if (!isActive) return;
@@ -288,6 +300,7 @@ export default function DashboardTabPage() {
 
           setRingkasan(ringkasanMerged);
           setPreviewPengingat(previewResult);
+          setSalinAnggaranInfo(copyBudgetResult);
         } catch (error) {
           console.log("loadDashboard error:", error);
         } finally {
@@ -303,6 +316,21 @@ export default function DashboardTabPage() {
       };
     }, [db])
   );
+
+  async function handleSalinAnggaranDashboard() {
+    try {
+      const res = await salinAnggaranBulanLalu(db);
+      Alert.alert("Berhasil", res.pesan);
+      setSalinAnggaranInfo({
+        bisaSalin: false,
+        jumlahBulanLalu: 0,
+        bulanLalu: "",
+      });
+    } catch (err) {
+      console.log("salinAnggaranDashboard error:", err);
+      Alert.alert("Error", "Gagal menyalin anggaran dari bulan lalu.");
+    }
+  }
 
   const sisaBulanIni = ringkasan.totalPemasukan - ringkasan.totalPengeluaran;
   const uangAmanDipakai = Math.max(0, sisaBulanIni);
@@ -484,6 +512,57 @@ export default function DashboardTabPage() {
       {isGuestMode ? (
         <View style={dashboardScreenStyles.banner}>
           <GuestModeNotice />
+        </View>
+      ) : null}
+
+      {salinAnggaranInfo.bisaSalin ? (
+        <View style={dashboardScreenStyles.banner}>
+          <AppCard>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 6,
+              }}
+            >
+              <Ionicons
+                name="speedometer-outline"
+                size={20}
+                color={COLORS.brandPrimary}
+              />
+              <Text style={dashboardScreenStyles.quickActionTitle}>
+                Salin anggaran bulan lalu?
+              </Text>
+            </View>
+
+            <Text
+              style={[
+                dashboardScreenStyles.quickActionSubtitle,
+                { marginBottom: 12 },
+              ]}
+            >
+              Bulan ini belum ada anggaran pengeluaran. Ada{" "}
+              {salinAnggaranInfo.jumlahBulanLalu} anggaran di bulan sebelumnya (
+              {salinAnggaranInfo.bulanLalu}) yang bisa kamu salin langsung.
+            </Text>
+
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <AppButton
+                  title="Salin sekarang"
+                  onPress={handleSalinAnggaranDashboard}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <AppButton
+                  title="Atur sendiri"
+                  variant="secondary"
+                  onPress={() => goTo(ANGGARAN_HREF)}
+                />
+              </View>
+            </View>
+          </AppCard>
         </View>
       ) : null}
 
