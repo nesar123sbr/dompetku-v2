@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { AppState } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import type { Session, User } from "@supabase/supabase-js";
 
@@ -80,7 +81,7 @@ type AuthContextValue = {
     hasLocalData: boolean;
   }>;
 
-  signOutUser: () => Promise<string>;
+  signOutUser: (options?: { hapusDataLokal?: boolean }) => Promise<string>;
 
   syncInitialLocalData: () => Promise<SinkronisasiAwalSummary>;
   syncCloudNow: () => Promise<RingkasanSinkronisasiDuaArah>;
@@ -317,6 +318,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        supabase.auth.startAutoRefresh();
+      } else {
+        supabase.auth.stopAutoRefresh();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     let isMounted = true;
 
     async function syncSessionToLocalState() {
@@ -423,27 +442,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
     [db, refreshLocalState]
   );
 
-  const signOutUser = useCallback(async () => {
-    if (session?.user) {
-      try {
-        await Promise.race([
-          sinkronisasiCloudSekarang(db, session.user),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Timeout")), 8000)
-          ),
-        ]);
-      } catch (error) {
-        console.log("signOutUser sync best-effort error:", error);
+  const signOutUser = useCallback(
+    async (options?: { hapusDataLokal?: boolean }) => {
+      if (session?.user && !options?.hapusDataLokal) {
+        try {
+          await Promise.race([
+            sinkronisasiCloudSekarang(db, session.user),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("Timeout")), 8000)
+            ),
+          ]);
+        } catch (error) {
+          console.log("signOutUser sync best-effort error:", error);
+        }
       }
-    }
 
-    const nextMode = await keluarAkunDanKembaliKeModeLokal(db);
+      const nextMode = await keluarAkunDanKembaliKeModeLokal(db, options);
 
-    setSession(null);
-    await refreshLocalState();
+      setSession(null);
+      await refreshLocalState();
 
-    return nextMode;
-  }, [db, refreshLocalState, session]);
+      return nextMode;
+    },
+    [db, refreshLocalState, session]
+  );
 
   const syncInitialLocalData = useCallback(async () => {
     if (!session?.user) {

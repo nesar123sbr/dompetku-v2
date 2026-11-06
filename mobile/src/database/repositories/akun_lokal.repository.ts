@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
+import { batalkanSemuaNotifikasiTerjadwal } from "@/lib/notifications";
 import { MODE_PENGGUNAAN, PENGATURAN_KEY } from "../constants";
 import { seedDefaultData } from "../migrations";
 import type { ModePenggunaan } from "../types";
@@ -208,65 +209,126 @@ export async function bersihkanAkunSupabaseLokal(db: SQLiteDatabase) {
   );
 }
 
+export async function getPemilikDataLokal(
+  db: SQLiteDatabase
+): Promise<string | null> {
+  const owner = await getNilaiPengaturanTeks(
+    db,
+    PENGATURAN_KEY.DATA_OWNER_USER_ID
+  );
+  if (owner && owner.trim().length > 0) {
+    return owner.trim();
+  }
+
+  const legacyOwner = await getNilaiPengaturanTeks(
+    db,
+    PENGATURAN_KEY.PEMILIK_DATA_LOKAL_USER_ID
+  );
+  if (legacyOwner && legacyOwner.trim().length > 0) {
+    return legacyOwner.trim();
+  }
+
+  return null;
+}
+
+export async function setPemilikDataLokal(
+  db: SQLiteDatabase,
+  userId: string | null
+): Promise<void> {
+  const clean = userId ? userId.trim() : "";
+  await setNilaiPengaturanTeks(db, PENGATURAN_KEY.DATA_OWNER_USER_ID, clean);
+  await setNilaiPengaturanTeks(
+    db,
+    PENGATURAN_KEY.PEMILIK_DATA_LOKAL_USER_ID,
+    clean
+  );
+}
+
+export async function hapusSemuaDataLokal(db: SQLiteDatabase): Promise<void> {
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    await txn.execAsync(`
+      DELETE FROM pemasukan;
+      DELETE FROM pengeluaran;
+      DELETE FROM transfer_dompet;
+      DELETE FROM koreksi_saldo_dompet;
+      DELETE FROM anggaran_bulanan;
+      DELETE FROM pengingat_tagihan;
+      DELETE FROM kategori_pengeluaran;
+      DELETE FROM kategori_pemasukan;
+      DELETE FROM dompet;
+    `);
+
+    await setNilaiPengaturanTeks(
+      txn,
+      PENGATURAN_KEY.AKUN_SUPABASE_USER_ID,
+      ""
+    );
+    await setNilaiPengaturanTeks(
+      txn,
+      PENGATURAN_KEY.AKUN_SUPABASE_EMAIL,
+      ""
+    );
+    await setNilaiPengaturanTeks(
+      txn,
+      PENGATURAN_KEY.AKUN_SUPABASE_NAMA,
+      ""
+    );
+    await setNilaiPengaturanTeks(
+      txn,
+      PENGATURAN_KEY.AKUN_PERLU_SINKRONISASI_AWAL,
+      "0"
+    );
+    await setNilaiPengaturanTeks(
+      txn,
+      PENGATURAN_KEY.AKUN_TERAKHIR_SINKRONISASI_AT,
+      ""
+    );
+    await setNilaiPengaturanTeks(
+      txn,
+      PENGATURAN_KEY.AKUN_CURSOR_PULL_CLOUD,
+      ""
+    );
+    await setNilaiPengaturanTeks(
+      txn,
+      PENGATURAN_KEY.CLOUD_SYNC_CURSOR,
+      ""
+    );
+    await setNilaiPengaturanTeks(
+      txn,
+      PENGATURAN_KEY.PEMILIK_DATA_LOKAL_USER_ID,
+      ""
+    );
+    await setNilaiPengaturanTeks(
+      txn,
+      PENGATURAN_KEY.DATA_OWNER_USER_ID,
+      ""
+    );
+    await setModePenggunaan(txn, MODE_PENGGUNAAN.NONE);
+  });
+
+  await seedDefaultData(db);
+
+  try {
+    await batalkanSemuaNotifikasiTerjadwal();
+  } catch (error) {
+    console.log("batalkanSemuaNotifikasiTerjadwal error:", error);
+  }
+}
+
 export async function selaraskanPemilikDataLokal(
   db: SQLiteDatabase,
   userId: string
 ): Promise<{ dataDibersihkan: boolean }> {
-  const pemilik = emptyToNull(
-    await getNilaiPengaturanTeks(
-      db,
-      PENGATURAN_KEY.PEMILIK_DATA_LOKAL_USER_ID
-    )
-  );
+  const pemilik = await getPemilikDataLokal(db);
 
   if (pemilik && pemilik !== userId) {
-    await db.withExclusiveTransactionAsync(async (txn) => {
-      await txn.execAsync(`
-        DELETE FROM koreksi_saldo_dompet;
-        DELETE FROM anggaran_bulanan;
-        DELETE FROM pengingat_tagihan;
-        DELETE FROM transfer_dompet;
-        DELETE FROM pemasukan;
-        DELETE FROM pengeluaran;
-        DELETE FROM kategori_pengeluaran;
-        DELETE FROM kategori_pemasukan;
-        DELETE FROM dompet;
-      `);
-
-      await setNilaiPengaturanTeks(
-        txn,
-        PENGATURAN_KEY.AKUN_TERAKHIR_SINKRONISASI_AT,
-        ""
-      );
-      await setNilaiPengaturanTeks(
-        txn,
-        PENGATURAN_KEY.AKUN_CURSOR_PULL_CLOUD,
-        ""
-      );
-      await setNilaiPengaturanTeks(
-        txn,
-        PENGATURAN_KEY.AKUN_PERLU_SINKRONISASI_AWAL,
-        "0"
-      );
-    });
-
-    await seedDefaultData(db);
-
-    await setNilaiPengaturanTeks(
-      db,
-      PENGATURAN_KEY.PEMILIK_DATA_LOKAL_USER_ID,
-      userId
-    );
-
+    await hapusSemuaDataLokal(db);
+    await setPemilikDataLokal(db, userId);
     return { dataDibersihkan: true };
   }
 
   if (!pemilik) {
-    await setNilaiPengaturanTeks(
-      db,
-      PENGATURAN_KEY.PEMILIK_DATA_LOKAL_USER_ID,
-      userId
-    );
+    await setPemilikDataLokal(db, userId);
   }
 
   return { dataDibersihkan: false };

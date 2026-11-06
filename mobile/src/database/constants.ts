@@ -16,5 +16,7 @@ export const PENGATURAN_KEY = {
   AKUN_PERLU_SINKRONISASI_AWAL: "akun_perlu_sinkronisasi_awal",
   AKUN_TERAKHIR_SINKRONISASI_AT: "akun_terakhir_sinkronisasi_at",
   PEMILIK_DATA_LOKAL_USER_ID: "pemilik_data_lokal_user_id",
+  DATA_OWNER_USER_ID: "data_owner_user_id",
   AKUN_CURSOR_PULL_CLOUD: "akun_cursor_pull_cloud",
+  CLOUD_SYNC_CURSOR: "cloud_sync_cursor",
 } as const;

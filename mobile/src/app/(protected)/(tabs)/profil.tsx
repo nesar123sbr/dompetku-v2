@@ -303,12 +303,12 @@ export default function ProfilTabPage() {
     }
   }
 
-  async function handleSignOut() {
+  async function handleSignOut(hapusDataLokal: boolean = false) {
     try {
       setIsProcessing(true);
       clearFeedback();
 
-      const nextMode = await signOutUser();
+      const nextMode = await signOutUser({ hapusDataLokal });
 
       if (nextMode === "guest") {
         router.replace(ROUTES.PROTECTED.DASHBOARD);
@@ -325,17 +325,21 @@ export default function ProfilTabPage() {
 
   function confirmSignOut() {
     Alert.alert(
-      "Keluar dari akun?",
-      "Data yang sudah dibackup tetap aman di akun. Kamu bisa masuk lagi dengan email yang sama.",
+      "Keluar dari Akun?",
+      "Pilih tindakan untuk data di perangkat ini setelah keluar:",
       [
         {
           text: "Batal",
           style: "cancel",
         },
         {
-          text: "Keluar",
+          text: "Keluar, data tetap di HP",
+          onPress: () => handleSignOut(false),
+        },
+        {
+          text: "Keluar & hapus data dari HP ini",
           style: "destructive",
-          onPress: handleSignOut,
+          onPress: () => handleSignOut(true),
         },
       ]
     );

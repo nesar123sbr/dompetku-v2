@@ -1,14 +1,17 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import type { User } from "@supabase/supabase-js";
+import { Alert } from "react-native";
 
 import {
   catatAkunSupabaseLokal,
   getApakahAdaDataLokalBermakna,
   getInfoAkunSupabaseLokal,
-  selaraskanPemilikDataLokal,
+  getPemilikDataLokal,
+  hapusSemuaDataLokal,
+  MODE_PENGGUNAAN,
+  setPemilikDataLokal,
   turunkanModeSetelahKeluarAkun,
 } from "@/database";
-import { batalkanSemuaNotifikasiTerjadwal } from "@/lib/notifications";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type SignUpPayload = {
@@ -77,21 +80,126 @@ function getNamaDariUser(user: User | null | undefined) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+async function konfirmasiKonflikAkunLain(): Promise<"hapus_dan_muat" | "batal"> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      "Data di HP ini milik akun lain",
+      "Perangkat ini masih menyimpan data dari akun sebelumnya. Untuk masuk dengan akun ini, hapus data di HP lalu muat data akunmu, atau batalkan untuk keluar.",
+      [
+        {
+          text: "Batal & Keluar",
+          style: "cancel",
+          onPress: () => resolve("batal"),
+        },
+        {
+          text: "Hapus data di HP lalu muat data akun ini",
+          style: "destructive",
+          onPress: () => resolve("hapus_dan_muat"),
+        },
+      ],
+      { cancelable: false }
+    );
+  });
+}
+
+async function konfirmasiHubungkanDataGuest(): Promise<"hubungkan" | "batal"> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      "Hubungkan data di HP ke akun?",
+      "Perangkat ini memiliki catatan keuangan lokal. Apakah kamu ingin menghubungkan dan mencadangkan data ini ke akun barumu?",
+      [
+        {
+          text: "Batal & Keluar",
+          style: "cancel",
+          onPress: () => resolve("batal"),
+        },
+        {
+          text: "Hubungkan ke Akun",
+          onPress: () => resolve("hubungkan"),
+        },
+      ],
+      { cancelable: false }
+    );
+  });
+}
+
+export async function tanganiKoneksiAkunDanDataLokal(
+  db: SQLiteDatabase,
+  user: User,
+  normalizedEmail: string
+): Promise<{ updatedHasLocalData: boolean }> {
+  const client = getSupabaseClientOrThrow();
+  const hasLocalData = await getApakahAdaDataLokalBermakna(db);
+  const owner = await getPemilikDataLokal(db);
+
+  if (hasLocalData && owner && owner !== user.id) {
+    const action = await konfirmasiKonflikAkunLain();
+    if (action === "batal") {
+      await client.auth.signOut({ scope: "local" }).catch(() => {});
+      throw new Error("Masuk akun dibatalkan.");
+    }
+
+    await hapusSemuaDataLokal(db);
+    await setPemilikDataLokal(db, user.id);
+    await catatAkunSupabaseLokal(db, {
+      userId: user.id,
+      email: user.email ?? normalizedEmail,
+      nama: getNamaDariUser(user),
+      butuhSinkronisasiAwal: false,
+    });
+    return { updatedHasLocalData: false };
+  }
+
+  if (hasLocalData && !owner) {
+    const action = await konfirmasiHubungkanDataGuest();
+    if (action === "batal") {
+      await client.auth.signOut({ scope: "local" }).catch(() => {});
+      throw new Error("Masuk akun dibatalkan.");
+    }
+
+    await setPemilikDataLokal(db, user.id);
+    await catatAkunSupabaseLokal(db, {
+      userId: user.id,
+      email: user.email ?? normalizedEmail,
+      nama: getNamaDariUser(user),
+      butuhSinkronisasiAwal: true,
+    });
+    return { updatedHasLocalData: true };
+  }
+
+  await setPemilikDataLokal(db, user.id);
+  const updatedHasLocalData = await getApakahAdaDataLokalBermakna(db);
+  await catatAkunSupabaseLokal(
+    db,
+    {
+      userId: user.id,
+      email: user.email ?? normalizedEmail,
+      nama: getNamaDariUser(user),
+      butuhSinkronisasiAwal: updatedHasLocalData,
+    },
+    { preserveExistingPending: true }
+  );
+
+  return { updatedHasLocalData };
+}
+
 export async function catatSessionAktifKePengaturanLokal(
   db: SQLiteDatabase,
   user: User
 ) {
-  const { dataDibersihkan } = await selaraskanPemilikDataLokal(db, user.id);
-  if (dataDibersihkan) {
-    await batalkanSemuaNotifikasiTerjadwal();
+  const owner = await getPemilikDataLokal(db);
+  const hasLocalData = await getApakahAdaDataLokalBermakna(db);
+
+  if (hasLocalData && owner && owner !== user.id) {
+    await hapusSemuaDataLokal(db);
   }
 
-  const currentInfo = await getInfoAkunSupabaseLokal(db);
+  await setPemilikDataLokal(db, user.id);
 
+  const currentInfo = await getInfoAkunSupabaseLokal(db);
   const inferredPending =
     currentInfo.butuhSinkronisasiAwal ||
-    (currentInfo.adaDataLokalBermakna &&
-      !currentInfo.terakhirSinkronisasiAt);
+    (currentInfo.adaDataLokalBermakna && !currentInfo.terakhirSinkronisasiAt);
 
   return catatAkunSupabaseLokal(
     db,
@@ -133,21 +241,11 @@ export async function daftarAkunDenganEmail(
     }
 
     if (data.session && data.user) {
-      const { dataDibersihkan } = await selaraskanPemilikDataLokal(
+      const { updatedHasLocalData } = await tanganiKoneksiAkunDanDataLokal(
         db,
-        data.user.id
+        data.user,
+        normalizedEmail
       );
-      if (dataDibersihkan) {
-        await batalkanSemuaNotifikasiTerjadwal();
-      }
-      const updatedHasLocalData = await getApakahAdaDataLokalBermakna(db);
-
-      await catatAkunSupabaseLokal(db, {
-        userId: data.user.id,
-        email: data.user.email ?? normalizedEmail,
-        nama: getNamaDariUser(data.user),
-        butuhSinkronisasiAwal: updatedHasLocalData,
-      });
 
       return {
         email: normalizedEmail,
@@ -200,21 +298,11 @@ export async function verifikasiOtpEmailDanHubungkanDataLokal(
       );
     }
 
-    const { dataDibersihkan } = await selaraskanPemilikDataLokal(
+    const { updatedHasLocalData } = await tanganiKoneksiAkunDanDataLokal(
       db,
-      resolvedUser.id
+      resolvedUser,
+      normalizedEmail
     );
-    if (dataDibersihkan) {
-      await batalkanSemuaNotifikasiTerjadwal();
-    }
-    const updatedHasLocalData = await getApakahAdaDataLokalBermakna(db);
-
-    await catatAkunSupabaseLokal(db, {
-      userId: resolvedUser.id,
-      email: resolvedUser.email ?? normalizedEmail,
-      nama: getNamaDariUser(resolvedUser),
-      butuhSinkronisasiAwal: updatedHasLocalData,
-    });
 
     return {
       user: resolvedUser,
@@ -318,21 +406,11 @@ export async function masukDenganPasswordDanHubungkanDataLokal(
       throw new Error("Sesi login tidak berhasil dibentuk.");
     }
 
-    const { dataDibersihkan } = await selaraskanPemilikDataLokal(
+    const { updatedHasLocalData } = await tanganiKoneksiAkunDanDataLokal(
       db,
-      data.user.id
+      data.user,
+      normalizedEmail
     );
-    if (dataDibersihkan) {
-      await batalkanSemuaNotifikasiTerjadwal();
-    }
-    const updatedHasLocalData = await getApakahAdaDataLokalBermakna(db);
-
-    await catatAkunSupabaseLokal(db, {
-      userId: data.user.id,
-      email: data.user.email ?? normalizedEmail,
-      nama: getNamaDariUser(data.user),
-      butuhSinkronisasiAwal: updatedHasLocalData,
-    });
 
     return {
       user: data.user,
@@ -345,7 +423,8 @@ export async function masukDenganPasswordDanHubungkanDataLokal(
 }
 
 export async function keluarAkunDanKembaliKeModeLokal(
-  db: SQLiteDatabase
+  db: SQLiteDatabase,
+  options?: { hapusDataLokal?: boolean }
 ) {
   try {
     const client = getSupabaseClientOrThrow();
@@ -355,14 +434,18 @@ export async function keluarAkunDanKembaliKeModeLokal(
     if (error) {
       await client.auth.signOut({ scope: "local" }).catch(() => {});
     }
-
-    return await turunkanModeSetelahKeluarAkun(db);
   } catch {
     try {
       if (supabase) {
         await supabase.auth.signOut({ scope: "local" }).catch(() => {});
       }
     } catch {}
-    return await turunkanModeSetelahKeluarAkun(db);
   }
+
+  if (options?.hapusDataLokal) {
+    await hapusSemuaDataLokal(db);
+    return MODE_PENGGUNAAN.NONE;
+  }
+
+  return await turunkanModeSetelahKeluarAkun(db);
 }
