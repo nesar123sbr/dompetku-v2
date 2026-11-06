@@ -136,3 +136,110 @@ ReactNativeJS: 'Global ErrorBoundary caught error:', { [Error: Error code 1: no 
   1. Memvalidasi token JWT pengguna aktif.
   2. Memanggil RPC `hapus_semua_data_pengguna` untuk membersihkan basis data.
   3. Memanggil `auth.admin.deleteUser(user.id)` menggunakan service role key.
+
+---
+
+## 7. Rangkuman Perbaikan & Bukti Verifikasi Berkas
+
+Berikut adalah matriks perbaikan yang telah dituntaskan di seluruh tahapan:
+
+| Fase | Area / Isu | Berkas Terkait | Status & Bukti |
+|---|---|---|---|
+| **Fase 0** | Typo kolom `dompet_sumber_id` & Error Boundary | `mobile/src/database/repositories/dompet.repository.ts`<br>`mobile/src/database/migrations.ts`<br>`mobile/src/app/_layout.tsx`<br>`mobile/src/providers/LocalDatabaseProvider.tsx` | Selesai. Logcat membuktikan SQLite exception tereliminasi. Error boundary informatif & Layar Pemulihan DB aktif. |
+| **Fase 1** | Migrasi transaksi per versi, timeout session, EAS | `mobile/src/database/migrations.ts`<br>`mobile/src/providers/AuthProvider.tsx`<br>`mobile/src/lib/supabase.ts`<br>`mobile/app.json`<br>`mobile/eas.json`<br>`mobile/tests/migration_simulation.test.mjs` | Selesai. Helper `columnExists` aktif, test migrasi 6/6 lolos, AppState auto-refresh berjalan, allowBackup false. |
+| **Fase 2** | Bug logika sinkronisasi, navigasi, dan anggaran | `mobile/src/app/(auth)/reset-password.tsx`<br>`mobile/src/app/(auth)/verify-email.tsx`<br>`mobile/src/app/(auth)/_layout.tsx`<br>`mobile/src/app/(protected)/(tabs)/dashboard.tsx`<br>`mobile/src/app/(protected)/(tabs)/wallet.tsx`<br>`mobile/src/components/ui/AppScreen.tsx`<br>`mobile/src/database/repositories/wallet.repository.ts`<br>`mobile/src/providers/CloudAutoSyncProvider.tsx`<br>`mobile/src/app/(protected)/riwayat-transaksi.tsx`<br>`mobile/src/services/sync/engine.ts` | Selesai. Cooldown OTP 60 detik, isolasi password recovery, silent offline sync, search input tanpa blur/unmount, batch push chunking. |
+| **Fase 3** | Cleaning & modernisasi modul | `mobile/src/database/helpers.ts`<br>`mobile/src/utils/formatters.ts`<br>`mobile/src/services/laporan_export.service.ts` | Selesai. UUID RFC4122 via `crypto.randomUUID()`, singleton formatters rupiah/persen/tanggal, rute navigasi objek resmi. |
+| **Fase 4** | Migrasi Supabase & Hardening RPC | `supabase/migrations/20261106090000_000005_sync_core_hardening.sql`<br>`supabase/migrations/20261106100000_000006_delete_account_rpc.sql`<br>`supabase/config.toml`<br>`supabase/functions/delete-account/index.ts` | Selesai. Server timestamp trigger, sync_bundle LWW + koreksi saldo, hapus akun berjenjang FK-safe, password min 8 karakter. |
+| **Fase 5** | Arsitektur 13 Pilar & Laporan Audit | `docs/ARCHITECTURE.md`<br>`docs/AUDIT_REPORT.md`<br>`docs/DEBUGGING.md` | Selesai. Dokumentasi arsitektural lengkap, panduan debugging adb, dan instruksi manual pemilik repo. |
+
+---
+
+## 8. Catatan Temuan yang Dilewati / Dialihkan (Skipped Items Rationale)
+
+1. **Uninstall dependensi `expo-symbols`**:
+   - *Alasan*: Berkas pustaka inti Expo Router (`node_modules/expo-router/build/native-tabs/...`) mengimpor tipe data dari `expo-symbols`. Penghapusan paket ini akan memicu kegagalan kompilasi TypeScript pada level expo-router. Paket dipertahankan sesuai aturan aman: "JANGAN hapus peer dependency expo-router".
+2. **Paket `xlsx`**:
+   - *Alasan*: Tidak ditemukan pada berkas `mobile/package.json` yang aktif (telah dibersihkan sebelumnya; ekspor murni menggunakan CSV/Excel teks dan PDF via `expo-print`).
+3. **Penyimpanan sesi terenkripsi LargeSecureStore**:
+   - *Alasan*: Supabase Auth Storage adapter saat ini memanfaatkan local storage yang diisolasi oleh sandbox OS Android (`allowBackup: false` mencegah berkas diekstraksi lewat backup ADB). Penggantian ke SecureStore custom dengan chunking berpotensi memutuskan sesi pengguna aktif yang sudah login di versi sebelumnya tanpa adanya migrasi multi-tahap.
+
+---
+
+## 9. Panduan Tindakan Manual untuk Pemilik Repositori (Manual Actions Required)
+
+Pengaturan berikut wajib dilakukan secara manual oleh pemilik repositori pada dashboard EAS dan Supabase Console, karena tidak dapat dieksekusi murni melalui kode git:
+
+### 9.1 Variabel Lingkungan di EAS Build Dashboard
+Pada dashboard **Expo Application Services (EAS)**:
+1. Buka project **dompetku-v2** > **Environment Variables**.
+2. Tambahkan variabel untuk setiap environment (`preview`, `production`):
+   - `EXPO_PUBLIC_SUPABASE_URL`: URL project Supabase kamu (contoh: `https://xxxx.supabase.co`).
+   - `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Kunci anon/publishable Supabase kamu (contoh: `eyJhbGciOi...`).
+3. Pastikan tidak ada spasi atau tanda kutip tambahan saat memasukkan nilai.
+
+### 9.2 Konfigurasi Dashboard Supabase Production
+Pada **Supabase Dashboard** (`https://supabase.com/dashboard/project/<project-ref>`):
+1. **Custom SMTP (Wajib untuk Produksi)**:
+   - Masuk ke menu **Project Settings** > **Authentication** > **SMTP Settings**.
+   - Aktifkan **Enable Custom SMTP** dan gunakan penyedia terpercaya seperti Resend, SendGrid, atau Mailgun.
+   - *Peringatan*: Layanan bawaan Supabase dibatasi hanya 3 email per jam, yang dapat menyebabkan kegagalan penerimaan OTP pada pengguna sungguhan.
+2. **Template Email OTP**:
+   - Masuk ke **Authentication** > **Email Templates** > **Confirm signup** dan **Magic Link**.
+   - Pastikan teks email menyertakan tag token 6 digit:
+     ```html
+     <h2>Kode Verifikasi DompetKu:</h2>
+     <p style="font-size: 24px; font-weight: bold; letter-spacing: 4px;">{{ .Token }}</p>
+     ```
+3. **Rate Limiting**:
+   - Pada menu **Authentication** > **Rate Limits**, pastikan batas *Email OTP* disesuaikan dengan volume pengguna yang diharapkan.
+
+### 9.3 Penerapan Migrasi & Edge Function ke Server Remote
+Jalankan perintah berikut menggunakan terminal di lingkungan pemilik proyek:
+```bash
+# 1. Login ke Supabase CLI
+npx supabase login
+
+# 2. Tautkan dengan project remote Supabase kamu
+npx supabase link --project-ref <your-project-ref>
+
+# 3. Terapkan migrasi skema dan RPC terbaru (000005 & 000006)
+npx supabase db push
+
+# 4. Deploy Edge Function hapus akun
+npx supabase functions deploy delete-account
+```
+
+---
+
+## 10. Checklist Pengujian Manual Komprehensif (Manual Test Scenarios)
+
+Berikut adalah skenario uji yang dapat dijalankan pada perangkat Android fisik untuk memverifikasi keandalan sistem:
+
+- [ ] **Skenario 1: Isolasi Multi-Akun & Pencegahan Bocor Data**
+  1. Masuk ke Akun A, catat 2 transaksi pemasukan dan 1 dompet baru.
+  2. Buka tab Profil > Keluar > Pilih "Keluar, data tetap di HP".
+  3. Masuk dengan Akun B pada perangkat yang sama.
+  4. Verifikasi: Dialog "Data di HP ini milik akun lain" muncul dengan pilihan "Hapus data di HP lalu muat data akun ini" atau "Batal". Data Akun A tidak tercampur ke Akun B.
+- [ ] **Skenario 2: Sinkronisasi Offline & Rekonsiliasi Saldo**
+  1. Aktifkan Mode Pesawat (*Airplane Mode*).
+  2. Catat 1 pengeluaran Rp 50.000 dan 1 koreksi saldo.
+  3. Matikan Mode Pesawat.
+  4. Buka Profil > Tekan "Sinkronkan Data".
+  5. Verifikasi: Data berhasil didorong ke Supabase, cursor server tersimpan, dan saldo terhitung akurat.
+- [ ] **Skenario 3: Anggaran Bulanan & Salin Bulan Lalu**
+  1. Buat anggaran kategori "Makanan & Minuman" untuk bulan berjalan.
+  2. Coba buat anggaran baru dengan kategori yang sama di bulan yang sama.
+  3. Verifikasi: Nilai ter-update tanpa membuat duplikasi baris.
+  4. Buka bulan berikutnya di mana belum ada anggaran: verifikasi banner "Salin anggaran bulan lalu" muncul dan dapat disalin dalam 1 klik.
+- [ ] **Skenario 4: Penyelesaian Pengingat Tanpa Nominal**
+  1. Buat pengingat tagihan dengan nominal Rp 0 (opsional).
+  2. Buka daftar pengingat > Tekan "Tandai selesai".
+  3. Verifikasi: Pengingat berstatus selesai tanpa memaksa pembuatan transaksi pengeluaran.
+- [ ] **Skenario 5: Ekspor Laporan Rentang Tanggal**
+  1. Masuk ke tab Insight > Pilih rentang tanggal kustom (misal: tanggal 1 s.d. 15).
+  2. Tekan tombol Ekspor CSV atau PDF.
+  3. Verifikasi: Dokumen yang diunduh memuat transaksi dalam rentang tanggal tersebut, bukan hanya bulan aktif.
+- [ ] **Skenario 6: Hapus Akun & Data (Play Store Compliance)**
+  1. Buka tab Profil > Menu Akun > Tekan "Hapus akun & data".
+  2. Konfirmasi dialog peringatan 2 langkah.
+  3. Verifikasi: Seluruh data cloud terhapus dari tabel Supabase, sesi lokal ditutup, dan aplikasi kembali ke tampilan tamu bersih.
