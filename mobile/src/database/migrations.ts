@@ -8,6 +8,17 @@ import { getNowIso } from "./helpers";
 
 const EPOCH_ISO = "1970-01-01T00:00:00.000Z";
 
+export async function columnExists(
+  db: SQLiteDatabase,
+  table: string,
+  column: string
+): Promise<boolean> {
+  const columns = await db.getAllAsync<{ name: string }>(
+    `PRAGMA table_info(${table})`
+  );
+  return columns.some((c) => c.name.toLowerCase() === column.toLowerCase());
+}
+
 async function createVersion1Tables(db: SQLiteDatabase) {
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS pengaturan_aplikasi (
@@ -145,23 +156,19 @@ async function createVersion2Tables(db: SQLiteDatabase) {
 }
 
 async function createVersion3ReminderColumns(db: SQLiteDatabase) {
-  await db
-    .execAsync(`
+  if (!(await columnExists(db, "pengingat_tagihan", "jam_pengingat"))) {
+    await db.execAsync(`
       ALTER TABLE pengingat_tagihan
       ADD COLUMN jam_pengingat TEXT NOT NULL DEFAULT '09:00';
-    `)
-    .catch(() => {
-      // Aman diabaikan kalau kolom sudah pernah ada.
-    });
+    `);
+  }
 
-  await db
-    .execAsync(`
+  if (!(await columnExists(db, "pengingat_tagihan", "notifikasi_diaktifkan"))) {
+    await db.execAsync(`
       ALTER TABLE pengingat_tagihan
       ADD COLUMN notifikasi_diaktifkan INTEGER NOT NULL DEFAULT 1;
-    `)
-    .catch(() => {
-      // Aman diabaikan kalau kolom sudah pernah ada.
-    });
+    `);
+  }
 }
 
 async function createVersion4BudgetTables(db: SQLiteDatabase) {
@@ -189,14 +196,12 @@ async function createVersion4BudgetTables(db: SQLiteDatabase) {
 }
 
 async function createVersion5WalletTypeColumn(db: SQLiteDatabase) {
-  await db
-    .execAsync(`
+  if (!(await columnExists(db, "dompet", "tipe_dompet"))) {
+    await db.execAsync(`
       ALTER TABLE dompet
       ADD COLUMN tipe_dompet TEXT NOT NULL DEFAULT 'tunai';
-    `)
-    .catch(() => {
-      // Aman diabaikan kalau kolom sudah pernah ada.
-    });
+    `);
+  }
 
   await db.execAsync(`
     UPDATE dompet
@@ -235,23 +240,19 @@ async function createVersion6PerformanceIndexes(db: SQLiteDatabase) {
 }
 
 async function createVersion7Tombstone(db: SQLiteDatabase) {
-  await db
-    .execAsync(`
+  if (!(await columnExists(db, "pemasukan", "is_deleted"))) {
+    await db.execAsync(`
       ALTER TABLE pemasukan
       ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;
-    `)
-    .catch(() => {
-      // Aman diabaikan kalau kolom sudah pernah ada.
-    });
+    `);
+  }
 
-  await db
-    .execAsync(`
+  if (!(await columnExists(db, "pengeluaran", "is_deleted"))) {
+    await db.execAsync(`
       ALTER TABLE pengeluaran
       ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;
-    `)
-    .catch(() => {
-      // Aman diabaikan kalau kolom sudah pernah ada.
-    });
+    `);
+  }
 
   await db.execAsync(`
     CREATE INDEX IF NOT EXISTS idx_pemasukan_deleted
@@ -338,53 +339,175 @@ async function createVersion8DatabaseHardening(db: SQLiteDatabase) {
 }
 
 async function createVersion9(db: SQLiteDatabase) {
-  await db.withTransactionAsync(async () => {
-    // 1. Migrasi pengaturan pemilik data lokal
-    await db.execAsync(`
-      INSERT OR IGNORE INTO pengaturan_aplikasi (kunci, nilai_teks, updated_at)
-      SELECT 'pemilik_data_lokal_user_id', nilai_teks, updated_at
-      FROM pengaturan_aplikasi
-      WHERE kunci = 'akun_supabase_user_id'
-        AND nilai_teks IS NOT NULL
-        AND TRIM(nilai_teks) != '';
-    `);
+  // 1. Migrasi pengaturan pemilik data lokal
+  await db.execAsync(`
+    INSERT OR IGNORE INTO pengaturan_aplikasi (kunci, nilai_teks, updated_at)
+    SELECT 'pemilik_data_lokal_user_id', nilai_teks, updated_at
+    FROM pengaturan_aplikasi
+    WHERE kunci = 'akun_supabase_user_id'
+      AND nilai_teks IS NOT NULL
+      AND TRIM(nilai_teks) != '';
+  `);
 
-    // 2. Rebuild tabel anggaran_bulanan tanpa UNIQUE(bulan, kategori_id)
-    await db.execAsync(`
-      DROP TABLE IF EXISTS anggaran_bulanan_v9;
+  // 2. Rebuild tabel anggaran_bulanan tanpa UNIQUE(bulan, kategori_id)
+  await db.execAsync(`
+    DROP TABLE IF EXISTS anggaran_bulanan_v9;
 
-      CREATE TABLE anggaran_bulanan_v9 (
-        id TEXT PRIMARY KEY NOT NULL,
-        bulan TEXT NOT NULL,
-        nama TEXT NOT NULL,
-        kategori_id TEXT,
-        batas_nominal REAL NOT NULL CHECK (batas_nominal > 0),
-        ambang_peringatan_persen REAL NOT NULL DEFAULT 0.8,
-        is_aktif INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        FOREIGN KEY (kategori_id) REFERENCES kategori_pengeluaran(id) ON DELETE SET NULL
+    CREATE TABLE anggaran_bulanan_v9 (
+      id TEXT PRIMARY KEY NOT NULL,
+      bulan TEXT NOT NULL,
+      nama TEXT NOT NULL,
+      kategori_id TEXT,
+      batas_nominal REAL NOT NULL CHECK (batas_nominal > 0),
+      ambang_peringatan_persen REAL NOT NULL DEFAULT 0.8,
+      is_aktif INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (kategori_id) REFERENCES kategori_pengeluaran(id) ON DELETE SET NULL
+    );
+
+    INSERT INTO anggaran_bulanan_v9 (
+      id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
+    )
+    SELECT
+      id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
+    FROM anggaran_bulanan;
+
+    DROP TABLE anggaran_bulanan;
+
+    ALTER TABLE anggaran_bulanan_v9 RENAME TO anggaran_bulanan;
+
+    UPDATE anggaran_bulanan
+    SET is_aktif = 0
+    WHERE is_aktif = 1
+      AND id NOT IN (
+        SELECT id FROM (
+          SELECT id,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY bulan, COALESCE(kategori_id, '')
+                   ORDER BY updated_at DESC, id DESC
+                 ) as rn
+          FROM anggaran_bulanan
+          WHERE is_aktif = 1
+        )
+        WHERE rn = 1
       );
 
-      INSERT INTO anggaran_bulanan_v9 (
-        id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
-      )
-      SELECT
-        id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
-      FROM anggaran_bulanan;
+    CREATE INDEX IF NOT EXISTS idx_anggaran_bulanan_bulan
+      ON anggaran_bulanan (bulan, is_aktif);
 
-      DROP TABLE anggaran_bulanan;
+    CREATE INDEX IF NOT EXISTS idx_anggaran_bulanan_kategori
+      ON anggaran_bulanan (kategori_id);
 
-      ALTER TABLE anggaran_bulanan_v9 RENAME TO anggaran_bulanan;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_anggaran_aktif_unik
+      ON anggaran_bulanan (bulan, COALESCE(kategori_id, ''))
+      WHERE is_aktif = 1;
+  `);
 
+  // 5. Normalisasi jam_pengingat pengingat_tagihan
+  await db.execAsync(`
+    UPDATE pengingat_tagihan
+    SET jam_pengingat = substr(jam_pengingat, 1, 5)
+    WHERE length(jam_pengingat) > 5;
+  `);
+}
+
+async function createVersion10(db: SQLiteDatabase) {
+  // 1. Tambah kolom saldo_awal pada dompet jika belum ada
+  const tableInfo = await db.getAllAsync<{ name: string }>(
+    "PRAGMA table_info(dompet)"
+  );
+  const hasSaldoAwal = tableInfo.some((col) => col.name === "saldo_awal");
+  if (!hasSaldoAwal) {
+    await db.execAsync(
+      "ALTER TABLE dompet ADD COLUMN saldo_awal REAL NOT NULL DEFAULT 0;"
+    );
+  }
+
+  // 2. Backfill saldo_awal per dompet:
+  // saldo_awal = saldo_saat_ini - (Σpemasukan - Σpengeluaran + Σtransfer_masuk - Σtransfer_keluar + Σkoreksi_selisih)
+  const dompets = await db.getAllAsync<{
+    id: string;
+    saldo_saat_ini: number;
+    total_pemasukan: number;
+    total_pengeluaran: number;
+    total_transfer_masuk: number;
+    total_transfer_keluar: number;
+    total_koreksi: number;
+  }>(`
+    SELECT
+      d.id,
+      d.saldo_saat_ini,
+      COALESCE((SELECT SUM(jumlah) FROM pemasukan WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pemasukan,
+      COALESCE((SELECT SUM(jumlah) FROM pengeluaran WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pengeluaran,
+      COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_tujuan_id = d.id), 0) AS total_transfer_masuk,
+      COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_sumber_id = d.id), 0) AS total_transfer_keluar,
+      COALESCE((SELECT SUM(selisih) FROM koreksi_saldo_dompet WHERE dompet_id = d.id), 0) AS total_koreksi
+    FROM dompet d;
+  `);
+
+  for (const d of dompets) {
+    const netMutasi =
+      d.total_pemasukan -
+      d.total_pengeluaran +
+      d.total_transfer_masuk -
+      d.total_transfer_keluar +
+      d.total_koreksi;
+    const saldoAwal = Math.round(d.saldo_saat_ini - netMutasi);
+    await db.runAsync(
+      "UPDATE dompet SET saldo_awal = $saldo_awal WHERE id = $id",
+      {
+        $saldo_awal: saldoAwal,
+        $id: d.id,
+      }
+    );
+  }
+}
+
+async function createVersion11(db: SQLiteDatabase) {
+  const now = getNowIso();
+  // 1. Rebuild tabel anggaran_bulanan tanpa UNIQUE inline
+  await db.execAsync(`
+    DROP TABLE IF EXISTS anggaran_bulanan_v11;
+
+    CREATE TABLE anggaran_bulanan_v11 (
+      id TEXT PRIMARY KEY NOT NULL,
+      bulan TEXT NOT NULL,
+      nama TEXT NOT NULL,
+      kategori_id TEXT,
+      batas_nominal REAL NOT NULL CHECK (batas_nominal > 0),
+      ambang_peringatan_persen REAL NOT NULL DEFAULT 0.8,
+      is_aktif INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (kategori_id) REFERENCES kategori_pengeluaran(id) ON DELETE SET NULL
+    );
+
+    INSERT INTO anggaran_bulanan_v11 (
+      id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
+    )
+    SELECT
+      id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
+    FROM anggaran_bulanan;
+
+    DROP TABLE anggaran_bulanan;
+
+    ALTER TABLE anggaran_bulanan_v11 RENAME TO anggaran_bulanan;
+  `);
+
+  // 2. Dedupe: per (bulan, COALESCE(kategori_id, '__semua__')) pertahankan 1 baris aktif dengan updated_at terbaru,
+  // nonaktifkan sisanya dan bump updated_at agar ikut ter-push
+  await db.runAsync(
+    `
       UPDATE anggaran_bulanan
-      SET is_aktif = 0
+      SET is_aktif = 0,
+          updated_at = $now
       WHERE is_aktif = 1
         AND id NOT IN (
           SELECT id FROM (
             SELECT id,
                    ROW_NUMBER() OVER (
-                     PARTITION BY bulan, COALESCE(kategori_id, '')
+                     PARTITION BY bulan, COALESCE(kategori_id, '__semua__')
                      ORDER BY updated_at DESC, id DESC
                    ) as rn
             FROM anggaran_bulanan
@@ -392,151 +515,23 @@ async function createVersion9(db: SQLiteDatabase) {
           )
           WHERE rn = 1
         );
+    `,
+    { $now: now }
+  );
 
-      CREATE INDEX IF NOT EXISTS idx_anggaran_bulanan_bulan
-        ON anggaran_bulanan (bulan, is_aktif);
+  // 3. Buat partial unique index dengan sentinel '__semua__'
+  await db.execAsync(`
+    DROP INDEX IF EXISTS idx_anggaran_aktif_unik;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_anggaran_aktif_unik
+      ON anggaran_bulanan (bulan, COALESCE(kategori_id, '__semua__'))
+      WHERE is_aktif = 1;
 
-      CREATE INDEX IF NOT EXISTS idx_anggaran_bulanan_kategori
-        ON anggaran_bulanan (kategori_id);
+    CREATE INDEX IF NOT EXISTS idx_anggaran_bulanan_bulan
+      ON anggaran_bulanan (bulan, is_aktif);
 
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_anggaran_aktif_unik
-        ON anggaran_bulanan (bulan, COALESCE(kategori_id, ''))
-        WHERE is_aktif = 1;
-    `);
-
-    // 5. Normalisasi jam_pengingat pengingat_tagihan
-    await db.execAsync(`
-      UPDATE pengingat_tagihan
-      SET jam_pengingat = substr(jam_pengingat, 1, 5)
-      WHERE length(jam_pengingat) > 5;
-    `);
-  });
-}
-
-async function createVersion10(db: SQLiteDatabase) {
-  await db.withTransactionAsync(async () => {
-    // 1. Tambah kolom saldo_awal pada dompet jika belum ada
-    const tableInfo = await db.getAllAsync<{ name: string }>(
-      "PRAGMA table_info(dompet)"
-    );
-    const hasSaldoAwal = tableInfo.some((col) => col.name === "saldo_awal");
-    if (!hasSaldoAwal) {
-      await db.execAsync(
-        "ALTER TABLE dompet ADD COLUMN saldo_awal REAL NOT NULL DEFAULT 0;"
-      );
-    }
-
-    // 2. Backfill saldo_awal per dompet:
-    // saldo_awal = saldo_saat_ini - (Σpemasukan - Σpengeluaran + Σtransfer_masuk - Σtransfer_keluar + Σkoreksi_selisih)
-    const dompets = await db.getAllAsync<{
-      id: string;
-      saldo_saat_ini: number;
-      total_pemasukan: number;
-      total_pengeluaran: number;
-      total_transfer_masuk: number;
-      total_transfer_keluar: number;
-      total_koreksi: number;
-    }>(`
-      SELECT
-        d.id,
-        d.saldo_saat_ini,
-        COALESCE((SELECT SUM(jumlah) FROM pemasukan WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pemasukan,
-        COALESCE((SELECT SUM(jumlah) FROM pengeluaran WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pengeluaran,
-        COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_tujuan_id = d.id), 0) AS total_transfer_masuk,
-        COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_sumber_id = d.id), 0) AS total_transfer_keluar,
-        COALESCE((SELECT SUM(selisih) FROM koreksi_saldo_dompet WHERE dompet_id = d.id), 0) AS total_koreksi
-      FROM dompet d;
-    `);
-
-    for (const d of dompets) {
-      const netMutasi =
-        d.total_pemasukan -
-        d.total_pengeluaran +
-        d.total_transfer_masuk -
-        d.total_transfer_keluar +
-        d.total_koreksi;
-      const saldoAwal = Math.round(d.saldo_saat_ini - netMutasi);
-      await db.runAsync(
-        "UPDATE dompet SET saldo_awal = $saldo_awal WHERE id = $id",
-        {
-          $saldo_awal: saldoAwal,
-          $id: d.id,
-        }
-      );
-    }
-  });
-}
-
-async function createVersion11(db: SQLiteDatabase) {
-  await db.withTransactionAsync(async () => {
-    const now = getNowIso();
-    // 1. Rebuild tabel anggaran_bulanan tanpa UNIQUE inline
-    await db.execAsync(`
-      DROP TABLE IF EXISTS anggaran_bulanan_v11;
-
-      CREATE TABLE anggaran_bulanan_v11 (
-        id TEXT PRIMARY KEY NOT NULL,
-        bulan TEXT NOT NULL,
-        nama TEXT NOT NULL,
-        kategori_id TEXT,
-        batas_nominal REAL NOT NULL CHECK (batas_nominal > 0),
-        ambang_peringatan_persen REAL NOT NULL DEFAULT 0.8,
-        is_aktif INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        FOREIGN KEY (kategori_id) REFERENCES kategori_pengeluaran(id) ON DELETE SET NULL
-      );
-
-      INSERT INTO anggaran_bulanan_v11 (
-        id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
-      )
-      SELECT
-        id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
-      FROM anggaran_bulanan;
-
-      DROP TABLE anggaran_bulanan;
-
-      ALTER TABLE anggaran_bulanan_v11 RENAME TO anggaran_bulanan;
-    `);
-
-    // 2. Dedupe: per (bulan, COALESCE(kategori_id, '__semua__')) pertahankan 1 baris aktif dengan updated_at terbaru,
-    // nonaktifkan sisanya dan bump updated_at agar ikut ter-push
-    await db.runAsync(
-      `
-        UPDATE anggaran_bulanan
-        SET is_aktif = 0,
-            updated_at = $now
-        WHERE is_aktif = 1
-          AND id NOT IN (
-            SELECT id FROM (
-              SELECT id,
-                     ROW_NUMBER() OVER (
-                       PARTITION BY bulan, COALESCE(kategori_id, '__semua__')
-                       ORDER BY updated_at DESC, id DESC
-                     ) as rn
-              FROM anggaran_bulanan
-              WHERE is_aktif = 1
-            )
-            WHERE rn = 1
-          );
-      `,
-      { $now: now }
-    );
-
-    // 3. Buat partial unique index dengan sentinel '__semua__'
-    await db.execAsync(`
-      DROP INDEX IF EXISTS idx_anggaran_aktif_unik;
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_anggaran_aktif_unik
-        ON anggaran_bulanan (bulan, COALESCE(kategori_id, '__semua__'))
-        WHERE is_aktif = 1;
-
-      CREATE INDEX IF NOT EXISTS idx_anggaran_bulanan_bulan
-        ON anggaran_bulanan (bulan, is_aktif);
-
-      CREATE INDEX IF NOT EXISTS idx_anggaran_bulanan_kategori
-        ON anggaran_bulanan (kategori_id);
-    `);
-  });
+    CREATE INDEX IF NOT EXISTS idx_anggaran_bulanan_kategori
+      ON anggaran_bulanan (kategori_id);
+  `);
 }
 
 async function seedDefaultSettings(db: SQLiteDatabase) {
@@ -819,66 +814,102 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   let nextVersion = currentVersion;
 
   if (nextVersion < 1) {
-    await createVersion1Tables(db);
+    await db.withTransactionAsync(async () => {
+      await createVersion1Tables(db);
+      await db.execAsync("PRAGMA user_version = 1");
+    });
     nextVersion = 1;
   }
-  
+
   if (nextVersion < 2) {
-    await createVersion2Tables(db);
+    await db.withTransactionAsync(async () => {
+      await createVersion2Tables(db);
+      await db.execAsync("PRAGMA user_version = 2");
+    });
     nextVersion = 2;
   }
-  
+
   if (nextVersion < 3) {
-    await createVersion3ReminderColumns(db);
+    await db.withTransactionAsync(async () => {
+      await createVersion3ReminderColumns(db);
+      await db.execAsync("PRAGMA user_version = 3");
+    });
     nextVersion = 3;
   }
-  
+
   if (nextVersion < 4) {
-    await createVersion4BudgetTables(db);
+    await db.withTransactionAsync(async () => {
+      await createVersion4BudgetTables(db);
+      await db.execAsync("PRAGMA user_version = 4");
+    });
     nextVersion = 4;
   }
-  
+
   if (nextVersion < 5) {
-    await createVersion5WalletTypeColumn(db);
+    await db.withTransactionAsync(async () => {
+      await createVersion5WalletTypeColumn(db);
+      await db.execAsync("PRAGMA user_version = 5");
+    });
     nextVersion = 5;
   }
-  
+
   if (nextVersion < 6) {
-    await createVersion6PerformanceIndexes(db);
+    await db.withTransactionAsync(async () => {
+      await createVersion6PerformanceIndexes(db);
+      await db.execAsync("PRAGMA user_version = 6");
+    });
     nextVersion = 6;
   }
-  
+
   if (nextVersion < 7) {
-    await createVersion7Tombstone(db);
+    await db.withTransactionAsync(async () => {
+      await createVersion7Tombstone(db);
+      await db.execAsync("PRAGMA user_version = 7");
+    });
     nextVersion = 7;
   }
-  
+
   if (nextVersion < 8) {
-    await createVersion8DatabaseHardening(db);
+    await db.withTransactionAsync(async () => {
+      await createVersion8DatabaseHardening(db);
+      await db.execAsync("PRAGMA user_version = 8");
+    });
     nextVersion = 8;
   }
 
   if (nextVersion < 9) {
-    await createVersion9(db);
+    await db.withTransactionAsync(async () => {
+      await createVersion9(db);
+      await db.execAsync("PRAGMA user_version = 9");
+    });
     nextVersion = 9;
-    await db.execAsync("PRAGMA user_version = 9");
   }
 
   if (nextVersion < 10) {
-    await createVersion10(db);
+    await db.withTransactionAsync(async () => {
+      await createVersion10(db);
+      await db.execAsync("PRAGMA user_version = 10");
+    });
     nextVersion = 10;
-    await db.execAsync("PRAGMA user_version = 10");
   }
 
   if (nextVersion < 11) {
-    await createVersion11(db);
+    await db.withTransactionAsync(async () => {
+      await createVersion11(db);
+      await db.execAsync("PRAGMA user_version = 11");
+    });
     nextVersion = 11;
-    await db.execAsync("PRAGMA user_version = 11");
   }
 
-  await seedDefaultData(db);
-
-  if (nextVersion !== currentVersion) {
-    await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+  // Seed data hanya pada database baru (currentVersion === 0)
+  // Pada upgrade, pastikan pengaturan dasar & kategori bawaan ada tanpa menimpa data pengguna
+  if (currentVersion === 0) {
+    await seedDefaultData(db);
+  } else if (currentVersion < DATABASE_VERSION) {
+    await seedDefaultSettings(db);
+    await seedDefaultKategoriPemasukan(db);
+    await seedDefaultKategoriPengeluaran(db);
   }
+
+  await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }

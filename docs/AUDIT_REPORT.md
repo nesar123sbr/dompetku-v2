@@ -45,3 +45,24 @@ ReactNativeJS: 'Global ErrorBoundary caught error:', { [Error: Error code 1: no 
      - Menggunakan API modern `File` dan `Paths` dari Expo SDK 58 (`expo-file-system`) untuk menghapus berkas SQLite korup secara idempotent.
 5. `docs/DEBUGGING.md`:
    - Panduan lengkap cara menangkap log via ADB logcat, development build, dan verifikasi ekspor bundel Android.
+
+
+---
+
+## 3. Rincian Perbaikan Fase 1 (Stabilitas P0)
+
+### 3.1 Migrasi Database Tahan Banting (`mobile/src/database/migrations.ts`)
+- **Pengecekan Kolom Deterministik**: Menambahkan helper `columnExists(db, table, column)` via `PRAGMA table_info` menggantikan `.catch(() => {})` yang sebelumnya menelan error secara diam-diam pada versi 3, 5, dan 7.
+- **Transaksi per Versi**: Seluruh migrasi dari v1 hingga v11 kini dibungkus dalam `db.withTransactionAsync` mandiri dengan pembaruan `PRAGMA user_version = N` seketika setelah blok versi sukses.
+- **Kebijakan Seeding Terkontrol**: `seedDefaultData` hanya dieksekusi saat inisialisasi basis data baru (`currentVersion === 0`). Pada proses upgrade skema, hanya data pengaturan aplikasi dan kategori bawaan yang dipastikan tersedia (`INSERT OR IGNORE`) tanpa menyentuh atau mereset dompet pengguna yang sudah ada.
+- **Uji Simulasi Migrasi**: Dibuat suite pengujian otomatis `mobile/tests/migration_simulation.test.mjs` menggunakan `node:sqlite` yang memvalidasi bahwa migrasi upgrade dari DB v7 ke v11 menghasilkan skema, index, dan perhitungan `saldo_awal` yang 100% konsisten dengan instalasi baru.
+
+### 3.2 Boot Flow & Ketahanan Offline (`mobile/src/providers/AuthProvider.tsx`)
+- **Timeout Session Supabase**: Menambahkan timeout 5 detik pada `supabase.auth.getSession()` dengan `Promise.race` plus failsafe timer 7 detik. Hal ini menjamin status `isReady` selalu `true` dalam kondisi koneksi lambat, mode pesawat, atau kegagalan jaringan, sehingga `RootNavigator` tidak pernah tersangkut pada splash screen.
+- **Autentikasi Offline-First**: Mendukung akses aplikasi secara penuh saat offline jika `localMode === 'authenticated'` dan `authUserId` tersimpan di database lokal.
+- **Fallback Sign Out Lokal**: Fallback ke `signOut({ scope: 'local' })` bila koneksi ke remote Supabase gagal.
+
+### 3.3 Konfigurasi Klien & Keamanan Platform
+- **Konversi TypeScript**: Mengonversi `mobile/src/lib/supabase.js` menjadi `mobile/src/lib/supabase.ts` dengan pengetikan `SupabaseClient` yang aman.
+- **Privasi & Backup Android**: Menambahkan `"allowBackup": false` pada konfigurasi Android di `mobile/app.json` untuk mencegah pencadangan otomatis berkas database keuangan SQLite dan token otentikasi ke Google Drive / cloud backup Android.
+- **Konfigurasi EAS**: Memperbarui profil `preview`, `development`, dan `production` di `mobile/eas.json` dengan channel eksplisit dan distribusi internal.

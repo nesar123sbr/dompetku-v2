@@ -280,11 +280,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
       };
     }
 
-    supabase.auth
-      .getSession()
+    const failsafeTimer = setTimeout(() => {
+      if (isMounted) {
+        console.log("AuthProvider: Remote auth timeout reached (failsafe), proceeding offline.");
+        setIsRemoteReady(true);
+      }
+    }, 7000);
+
+    const timeoutPromise = new Promise<{ data: { session: null }; error: Error }>(
+      (resolve) =>
+        setTimeout(
+          () =>
+            resolve({
+              data: { session: null },
+              error: new Error("Network timeout getting auth session"),
+            }),
+          5000
+        )
+    );
+
+    Promise.race([supabase.auth.getSession(), timeoutPromise])
       .then(({ data, error }) => {
         if (error) {
-          console.log("getSession error:", error.message);
+          console.log("getSession notice:", error.message);
         }
 
         if (!isMounted) return;
@@ -303,6 +321,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         if (!isMounted) return;
         setIsRemoteReady(true);
+      })
+      .finally(() => {
+        clearTimeout(failsafeTimer);
       });
 
     // 👇 HOTFIX 0.3: Memanfaatkan event untuk mendeteksi log out otomatis
@@ -321,6 +342,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     return () => {
       isMounted = false;
+      clearTimeout(failsafeTimer);
       subscription.unsubscribe();
     };
   }, []);

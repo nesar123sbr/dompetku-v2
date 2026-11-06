@@ -19,6 +19,7 @@
       "softwareKeyboardLayoutMode": "resize",
       "package": "com.gadanesar.dompetku",
       "versionCode": 8,
+      "allowBackup": false,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",
