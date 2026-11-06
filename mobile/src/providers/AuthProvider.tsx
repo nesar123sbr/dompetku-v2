@@ -236,7 +236,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     useState<AkunSupabaseLokalInfo>(EMPTY_AKUN_LOKAL);
 
   const [isLocalReady, setIsLocalReady] = useState(false);
-  const [isRemoteReady, setIsRemoteReady] = useState(false);
+  const [isRemoteReady, setIsRemoteReady] = useState(
+    !isSupabaseConfigured || !supabase
+  );
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
 
   // 👇 HOTFIX 0.1: Duplicate getModePenggunaan dihapus
@@ -279,7 +281,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     let isMounted = true;
 
     if (!isSupabaseConfigured || !supabase) {
-      setIsRemoteReady(true);
       return () => {
         isMounted = false;
       };

@@ -55,6 +55,15 @@ export default function CloudAutoSyncProvider({
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const [syncMessage, setSyncMessage] = useState("");
+  const [prevUserId, setPrevUserId] = useState(userId);
+
+  // Pola resmi React "adjust state during render":
+  // Ketika userId berganti (logout atau ganti akun), reset status & pesan seketika tanpa efek cascading render
+  if (prevUserId !== userId) {
+    setPrevUserId(userId);
+    setSyncStatus("idle");
+    setSyncMessage("");
+  }
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -237,16 +246,10 @@ export default function CloudAutoSyncProvider({
       clearStartupTimer();
       clearResumeTimer();
 
-      if (syncStatus !== "idle") {
-        setSyncStatus("idle");
-      }
-      if (syncMessage !== "") {
-        setSyncMessage("");
-      }
       isSyncingRef.current = false;
       lastSyncAttemptAtRef.current = 0;
     }
-  }, [clearHideTimer, clearResumeTimer, clearStartupTimer, syncMessage, syncStatus, userId]);
+  }, [clearHideTimer, clearResumeTimer, clearStartupTimer, userId]);
 
   useEffect(() => {
     return () => {
@@ -256,7 +259,8 @@ export default function CloudAutoSyncProvider({
     };
   }, [clearHideTimer, clearResumeTimer, clearStartupTimer]);
 
-  const shouldShowIndicator = syncStatus !== "idle" && syncMessage.length > 0;
+  const shouldShowIndicator =
+    Boolean(userId) && syncStatus !== "idle" && syncMessage.length > 0;
 
   return (
     <>

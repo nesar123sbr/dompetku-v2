@@ -72,7 +72,6 @@ export default function AppScreen({
 
   useEffect(() => {
     if (!shouldUseKeyboardAwareScroll) {
-      setKeyboardHeight(0);
       return;
     }
 

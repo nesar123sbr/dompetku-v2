@@ -105,7 +105,7 @@ export default function ProfilTabPage() {
   const [feedbackError, setFeedbackError] = useState("");
   const [feedbackSuccess, setFeedbackSuccess] = useState("");
 
-  const namaPengguna = useMemo(() => {
+  const namaPengguna = (() => {
     const rawNama =
       user?.user_metadata?.nama_lengkap ??
       user?.user_metadata?.full_name ??
@@ -125,7 +125,7 @@ export default function ProfilTabPage() {
     }
 
     return "Teman DompetKu";
-  }, [akunLokal?.authEmail, akunLokal?.authNama, session?.user?.email, user]);
+  })();
 
   const emailLabel = session?.user?.email ?? akunLokal?.authEmail ?? "-";
 
@@ -171,7 +171,7 @@ export default function ProfilTabPage() {
     session,
   ]);
 
-  const backupDescription = useMemo(() => {
+  const backupDescription = (() => {
     if (isGuestMode) {
       return "Data hanya tersimpan di HP ini. Masuk akun supaya data bisa dibackup dan tetap aman saat ganti HP.";
     }
@@ -191,12 +191,7 @@ export default function ProfilTabPage() {
     return `Backup terakhir: ${formatTanggalWaktuIndonesia(
       akunLokal.terakhirSinkronisasiAt
     )}`;
-  }, [
-    akunLokal?.terakhirSinkronisasiAt,
-    isGuestMode,
-    isSupabaseConfigured,
-    session,
-  ]);
+  })();
 
   function clearFeedback() {
     setFeedbackError("");

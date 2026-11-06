@@ -1,4 +1,5 @@
 import * as Notifications from "expo-notifications";
+import { AndroidImportance, IosAuthorizationStatus } from "expo-notifications";
 import { Linking, Platform } from "react-native";
 
 import { formatRupiah } from "@/utils";
@@ -34,9 +35,9 @@ function isIosNotificationGranted(settings: PermissionSnapshot) {
 
   return (
     settings.granted ||
-    iosStatus === Notifications.IosAuthorizationStatus.AUTHORIZED ||
-    iosStatus === Notifications.IosAuthorizationStatus.PROVISIONAL ||
-    iosStatus === Notifications.IosAuthorizationStatus.EPHEMERAL
+    iosStatus === IosAuthorizationStatus.AUTHORIZED ||
+    iosStatus === IosAuthorizationStatus.PROVISIONAL ||
+    iosStatus === IosAuthorizationStatus.EPHEMERAL
   );
 }
 
@@ -81,7 +82,7 @@ export async function ensureReminderNotificationChannelAsync() {
     REMINDER_NOTIFICATION_CHANNEL_ID,
     {
       name: "Pengingat Tagihan",
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
     }
   );

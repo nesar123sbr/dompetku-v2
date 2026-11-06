@@ -243,3 +243,39 @@ Berikut adalah skenario uji yang dapat dijalankan pada perangkat Android fisik u
   1. Buka tab Profil > Menu Akun > Tekan "Hapus akun & data".
   2. Konfirmasi dialog peringatan 2 langkah.
   3. Verifikasi: Seluruh data cloud terhapus dari tabel Supabase, sesi lokal ditutup, dan aplikasi kembali ke tampilan tamu bersih.
+
+---
+
+## 11. Audit Linting & Resolusi Peringatan React Compiler (Pasca-Upgrade Expo SDK 58)
+
+Setelah upgrade ke Expo SDK 58 (React Native 0.88.1 dan aturan React Compiler / `eslint-config-expo`), dilakukan audit menyeluruh pada linter. Jumlah peringatan berhasil ditekan dari **23 peringatan menjadi 13 peringatan (0 error)**.
+
+### 11.1 Peringatan yang Berhasil Diselesaikan (10 Item)
+1. **`mobile/src/app/(protected)/(tabs)/profil.tsx` (3 peringatan)**:
+   - Aturan: `react-hooks/preserve-manual-memoization`.
+   - Solusi: Menghapus pembungkus manual `useMemo` pada `namaPengguna` dan `backupDescription`. React Compiler secara otomatis mengoptimalkan kalkulasi ini tanpa risiko dependensi inferred yang tidak selaras.
+   - Dampak: Aturan `"react-hooks/preserve-manual-memoization"` di `mobile/eslint.config.js` kini aman dipromosikan kembali ke level **`"error"`**.
+2. **`mobile/src/providers/CloudAutoSyncProvider.tsx` (1 peringatan)**:
+   - Aturan: `react-hooks/set-state-in-effect`.
+   - Solusi: Menggunakan pola resmi React *"adjust state during render"* untuk transisi `userId` (saat logout / pergantian akun) serta menurunkan visibilitas indikator secara reaktif (`shouldShowIndicator = Boolean(userId) && ...`). Efek samping hanya membersihkan timer dan ref, mencegah masalah cascading render dan memastikan pesan sinkronisasi lama tidak berkedip saat login kembali.
+3. **`mobile/src/lib/notifications.ts` (4 peringatan)**:
+   - Aturan: `import/namespace`.
+   - Solusi: Mengganti pemanggilan namespace `Notifications.AndroidImportance` dan `Notifications.IosAuthorizationStatus` menjadi impor bernama langsung (`import { AndroidImportance, IosAuthorizationStatus } from "expo-notifications"`), menghilangkan kegagalan resolusi AST linter.
+4. **`mobile/src/components/ui/AppScreen.tsx` (1 peringatan)**:
+   - Aturan: `react-hooks/set-state-in-effect`.
+   - Solusi: Menghapus pemanggilan `setKeyboardHeight(0)` sinkron dalam efek ketika `shouldUseKeyboardAwareScroll` bernilai `false`, karena padding bawah layar sudah otomatis mengabaikan keyboard height saat flag dinonaktifkan.
+5. **`mobile/src/providers/AuthProvider.tsx` (1 peringatan)**:
+   - Aturan: `react-hooks/set-state-in-effect`.
+   - Solusi: Menginisialisasi nilai awal state `isRemoteReady` dengan `!isSupabaseConfigured || !supabase` secara deklaratif, sehingga tidak lagi memerlukan pemanggilan `setIsRemoteReady(true)` di dalam efek saat berjalan dalam mode offline / tanpa Supabase.
+
+### 11.2 Katalog 13 Peringatan yang Dipertahankan & Rasional Teknis
+Sisa 13 peringatan dipertahankan pada status `"warn"` demi menjaga stabilitas fungsional dan mencegah regresi pada alur transaksi utama:
+1. **Fallback Pemilihan Default Form (`react-hooks/set-state-in-effect` - 12 item)**:
+   - `transaksi.tsx` (baris 440, 447, 456, 465)
+   - `wallet.tsx` (baris 548, 746, 756, 762)
+   - `edit-transaksi.tsx` (baris 267, 276)
+   - `pengingat.tsx` (baris 241, 250)
+   - *Rasional*: Form-form ini menyinkronkan opsi pemilihan dompet awal (`selectedDompetId`) dan kategori default begitu data asynchronous dari SQLite selesai dimuat, atau saat menangani deep-link navigasi (`params.action === 'transfer'`). Mengubah arsitektur ini ke pola komputasi render memerlukan penulisan ulang mekanisme input formulir yang sangat krusial bagi kenyamanan pengguna warung/UMKM.
+2. **Dependensi Callback Rute (`react-hooks/exhaustive-deps` - 1 item)**:
+   - `transaksi.tsx` (baris 436 pada `useFocusEffect`): `syncJenisTransaksiFromRoute` sengaja tidak dimasukkan ke dalam daftar dependensi callback `useFocusEffect` agar pergantian tab manual (Pemasukan <-> Pengeluaran) tidak memicu pembacaan ulang database SQLite secara berulang yang dapat menyebabkan kedipan antarmuka (*flicker*).
+

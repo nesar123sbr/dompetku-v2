@@ -130,3 +130,31 @@ Jika proses ekspor berhasil tanpa error, bundle JavaScript produksi dijamin vali
   3. **Reset Database Lokal**:
      - *Jika akun terhubung (cloud)*: Memberi konfirmasi 2 langkah untuk membersihkan berkas SQLite lokal bermasalah dan mengunduh ulang dari cloud.
      - *Jika mode tamu*: Memberikan peringatan tegas bahwa data lokal akan hilang permanen sebelum konfirmasi 2 langkah.
+
+---
+
+## 6. Pembersihan Cache Editor (VS Code / ESLint / TypeScript Server)
+
+Setelah melakukan perubahan struktural seperti me-rename berkas (misalnya `supabase.js` menjadi `supabase.ts`), server bahasa atau ekstensi linter di VS Code / Cursor dapat menyimpan cache modul lama dan memunculkan peringatan semu seperti `import/no-unresolved` atau kegagalan path alias `@/*`, meskipun verifikasi CLI (`npx eslint` atau `npx expo lint`) berstatus bersih.
+
+### Langkah Menyegarkan Server Bahasa di VS Code:
+1. **Restart ESLint Server**:
+   - Buka Command Palette (`Ctrl+Shift+P` di Windows/Linux atau `Cmd+Shift+P` di macOS).
+   - Ketik dan pilih: **`ESLint: Restart ESLint Server`**.
+2. **Restart TypeScript Server**:
+   - Buka Command Palette (`Ctrl+Shift+P` atau `Cmd+Shift+P`).
+   - Ketik dan pilih: **`TypeScript: Restart TS Server`**.
+3. **Konfigurasi Monorepo Working Directory**:
+   - Pastikan konfigurasi `.vscode/settings.json` di root repository telah memuat:
+     ```json
+     {
+       "eslint.workingDirectories": [
+         {
+           "directory": "mobile",
+           "changeProcessCWD": true
+         }
+       ]
+     }
+     ```
+     Konfigurasi ini memastikan ESLint berjalan dengan konteks direktori `mobile/` tempat `eslint.config.js` dan `tsconfig.json` berada.
+
