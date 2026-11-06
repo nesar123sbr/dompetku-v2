@@ -403,7 +403,7 @@ export async function hitungUlangSaldoSemuaDompet(
         COALESCE((SELECT SUM(jumlah) FROM pemasukan WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pemasukan,
         COALESCE((SELECT SUM(jumlah) FROM pengeluaran WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pengeluaran,
         COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_tujuan_id = d.id), 0) AS total_transfer_masuk,
-        COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_asal_id = d.id), 0) AS total_transfer_keluar,
+        COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_sumber_id = d.id), 0) AS total_transfer_keluar,
         COALESCE((SELECT SUM(selisih) FROM koreksi_saldo_dompet WHERE dompet_id = d.id), 0) AS total_koreksi
       FROM dompet d;
     `);
@@ -477,7 +477,7 @@ export async function periksaIntegritasSaldo(
       COALESCE((SELECT SUM(jumlah) FROM pemasukan WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pemasukan,
       COALESCE((SELECT SUM(jumlah) FROM pengeluaran WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pengeluaran,
       COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_tujuan_id = d.id), 0) AS total_transfer_masuk,
-      COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_asal_id = d.id), 0) AS total_transfer_keluar,
+      COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_sumber_id = d.id), 0) AS total_transfer_keluar,
       COALESCE((SELECT SUM(selisih) FROM koreksi_saldo_dompet WHERE dompet_id = d.id), 0) AS total_koreksi
     FROM dompet d;
   `);
