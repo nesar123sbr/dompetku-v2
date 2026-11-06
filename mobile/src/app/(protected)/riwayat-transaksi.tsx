@@ -371,6 +371,293 @@ const TransactionRow = memo(function TransactionRow({
   );
 });
 
+type RiwayatHeaderProps = {
+  isTabMode: boolean;
+  onBack: () => void;
+  keywordInput: string;
+  onKeywordChange: (value: string) => void;
+  onClearSearch: () => void;
+  jenis: FilterJenis;
+  onChangeJenis: (nextJenis: FilterJenis) => void;
+  periode: FilterPeriode;
+  onChangePeriode: (nextPeriode: FilterPeriode) => void;
+  customMonthDate: string;
+  onCustomMonthChange: (nextDate: string) => void;
+  hasActiveFilter: boolean;
+  onResetFilter: () => void;
+  periodeTitle: string;
+  summary: RingkasanRiwayatTransaksi;
+  errorMessage: string;
+};
+
+const RiwayatHeader = memo(function RiwayatHeader({
+  isTabMode,
+  onBack,
+  keywordInput,
+  onKeywordChange,
+  onClearSearch,
+  jenis,
+  onChangeJenis,
+  periode,
+  onChangePeriode,
+  customMonthDate,
+  onCustomMonthChange,
+  hasActiveFilter,
+  onResetFilter,
+  periodeTitle,
+  summary,
+  errorMessage,
+}: RiwayatHeaderProps) {
+  const isSearchActive = keywordInput.trim().length > 0;
+
+  return (
+    <View>
+      {!isTabMode ? (
+        <AppButton
+          title="Kembali"
+          variant="secondary"
+          style={riwayatScreenStyles.topButton}
+          onPress={onBack}
+        />
+      ) : null}
+
+      <View style={riwayatScreenStyles.heroCard}>
+        <View style={riwayatScreenStyles.heroIcon}>
+          <Ionicons
+            name="receipt-outline"
+            size={26}
+            color={COLORS.brandPrimary}
+          />
+        </View>
+
+        <View style={riwayatScreenStyles.heroTextWrap}>
+          <Text style={riwayatScreenStyles.heroTitle}>Riwayat</Text>
+          <Text style={riwayatScreenStyles.heroSubtitle}>
+            Cari, cek, ubah, atau hapus catatan uangmu.
+          </Text>
+        </View>
+      </View>
+
+      <View style={riwayatScreenStyles.searchCard}>
+        <Ionicons
+          name="search-outline"
+          size={20}
+          color={COLORS.textTertiary}
+        />
+
+        <TextInput
+          value={keywordInput}
+          placeholder="Cari: bensin, gaji, makan..."
+          placeholderTextColor={COLORS.textTertiary}
+          style={riwayatScreenStyles.searchInput}
+          returnKeyType="search"
+          onChangeText={onKeywordChange}
+        />
+
+        {isSearchActive ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Bersihkan pencarian"
+            style={riwayatScreenStyles.clearButton}
+            onPress={onClearSearch}
+          >
+            <Ionicons name="close" size={18} color={COLORS.textSecondary} />
+          </Pressable>
+        ) : null}
+      </View>
+
+      <View style={riwayatScreenStyles.filterCard}>
+        <Text style={riwayatScreenStyles.filterTitle}>Jenis catatan</Text>
+
+        <View style={riwayatScreenStyles.filterRow}>
+          {JENIS_FILTERS.map((item) => {
+            const selected = jenis === item.value;
+            const isIncome = item.value === "pemasukan";
+            const isExpense = item.value === "pengeluaran";
+
+            return (
+              <Pressable
+                key={item.value}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                style={({ pressed }) => [
+                  riwayatScreenStyles.filterChip,
+                  selected && riwayatScreenStyles.filterChipActive,
+                  selected && isIncome && riwayatScreenStyles.filterChipIncome,
+                  selected &&
+                    isExpense &&
+                    riwayatScreenStyles.filterChipExpense,
+                  pressed && riwayatScreenStyles.filterChipPressed,
+                ]}
+                onPress={() => onChangeJenis(item.value)}
+              >
+                <Ionicons
+                  name={item.icon}
+                  size={15}
+                  color={
+                    selected
+                      ? isIncome
+                        ? COLORS.income
+                        : isExpense
+                        ? COLORS.expense
+                        : COLORS.brandPrimary
+                      : COLORS.textSecondary
+                  }
+                />
+
+                <Text
+                  style={[
+                    riwayatScreenStyles.filterChipText,
+                    selected && riwayatScreenStyles.filterChipTextActive,
+                    selected &&
+                      isIncome &&
+                      riwayatScreenStyles.filterChipTextIncome,
+                    selected &&
+                      isExpense &&
+                      riwayatScreenStyles.filterChipTextExpense,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={riwayatScreenStyles.filterTitle}>Waktu</Text>
+
+        <View style={riwayatScreenStyles.periodRow}>
+          {PERIODE_FILTERS.map((item) => {
+            const selected = periode === item.value;
+
+            return (
+              <Pressable
+                key={item.value}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                style={({ pressed }) => [
+                  riwayatScreenStyles.periodChip,
+                  selected && riwayatScreenStyles.periodChipActive,
+                  pressed && riwayatScreenStyles.filterChipPressed,
+                ]}
+                onPress={() => onChangePeriode(item.value)}
+              >
+                <Text
+                  style={[
+                    riwayatScreenStyles.periodChipText,
+                    selected && riwayatScreenStyles.periodChipTextActive,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {periode === "pilih_bulan" ? (
+          <View style={riwayatScreenStyles.customMonthWrap}>
+            <AppDateField
+              label="Pilih bulan"
+              value={customMonthDate}
+              onChangeDate={onCustomMonthChange}
+              helperText="Pilih tanggal apa saja di bulan yang ingin dilihat."
+            />
+          </View>
+        ) : null}
+
+        {hasActiveFilter ? (
+          <AppButton
+            title="Reset filter"
+            variant="secondary"
+            style={riwayatScreenStyles.resetFilterButton}
+            onPress={onResetFilter}
+          />
+        ) : null}
+      </View>
+
+      <AppCard style={riwayatScreenStyles.summaryCard}>
+        <View style={riwayatScreenStyles.summaryTopRow}>
+          <View>
+            <Text style={riwayatScreenStyles.summaryTitle}>
+              {periodeTitle}
+            </Text>
+            <Text style={riwayatScreenStyles.summarySubtitle}>
+              {summary.jumlahTransaksi} transaksi ditemukan
+            </Text>
+          </View>
+
+          <View style={riwayatScreenStyles.summaryCountPill}>
+            <Ionicons
+              name="document-text-outline"
+              size={16}
+              color={COLORS.brandPrimary}
+            />
+            <Text style={riwayatScreenStyles.summaryCountText}>
+              {summary.jumlahTransaksi}
+            </Text>
+          </View>
+        </View>
+
+        <View style={riwayatScreenStyles.summaryGrid}>
+          <View style={riwayatScreenStyles.summaryItem}>
+            <Text style={riwayatScreenStyles.summaryLabel}>Uang masuk</Text>
+            <Text style={riwayatScreenStyles.summaryValueIncome}>
+              {formatRupiah(summary.totalPemasukan)}
+            </Text>
+          </View>
+
+          <View style={riwayatScreenStyles.summaryItemLast}>
+            <Text style={riwayatScreenStyles.summaryLabel}>Uang keluar</Text>
+            <Text style={riwayatScreenStyles.summaryValueExpense}>
+              {formatRupiah(summary.totalPengeluaran)}
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={[
+            riwayatScreenStyles.netSummary,
+            summary.saldoBersih >= 0
+              ? riwayatScreenStyles.netSummaryPositive
+              : riwayatScreenStyles.netSummaryNegative,
+          ]}
+        >
+          <View>
+            <Text style={riwayatScreenStyles.netLabel}>Selisih periode</Text>
+            <Text
+              style={
+                summary.saldoBersih >= 0
+                  ? riwayatScreenStyles.netValuePositive
+                  : riwayatScreenStyles.netValueNegative
+              }
+            >
+              {formatRupiah(summary.saldoBersih)}
+            </Text>
+          </View>
+
+          <Ionicons
+            name={summary.saldoBersih >= 0 ? "trending-up" : "trending-down"}
+            size={24}
+            color={summary.saldoBersih >= 0 ? COLORS.income : COLORS.expense}
+          />
+        </View>
+      </AppCard>
+
+      {!!errorMessage ? (
+        <Text style={riwayatScreenStyles.errorText}>{errorMessage}</Text>
+      ) : null}
+
+      <View style={riwayatScreenStyles.listHeader}>
+        <Text style={riwayatScreenStyles.listTitle}>Daftar transaksi</Text>
+        <Text style={riwayatScreenStyles.listSubtitle}>
+          Ketuk transaksi untuk mengubah atau menghapus.
+        </Text>
+      </View>
+    </View>
+  );
+});
+
 export default function RiwayatTransaksiPage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -702,278 +989,47 @@ export default function RiwayatTransaksiPage() {
     [resetPagingState]
   );
 
-  const renderHeader = useCallback(() => {
-    const periodeTitle = getPeriodeTitle(periode, customMonthDate);
-    const isSearchActive = keywordInput.trim().length > 0;
-
-    return (
-      <View>
-        {!isTabMode ? (
-          <AppButton
-            title="Kembali"
-            variant="secondary"
-            style={riwayatScreenStyles.topButton}
-            onPress={handleBack}
-          />
-        ) : null}
-
-        <View style={riwayatScreenStyles.heroCard}>
-          <View style={riwayatScreenStyles.heroIcon}>
-            <Ionicons
-              name="receipt-outline"
-              size={26}
-              color={COLORS.brandPrimary}
-            />
-          </View>
-
-          <View style={riwayatScreenStyles.heroTextWrap}>
-            <Text style={riwayatScreenStyles.heroTitle}>Riwayat</Text>
-            <Text style={riwayatScreenStyles.heroSubtitle}>
-              Cari, cek, ubah, atau hapus catatan uangmu.
-            </Text>
-          </View>
-        </View>
-
-        <View style={riwayatScreenStyles.searchCard}>
-          <Ionicons
-            name="search-outline"
-            size={20}
-            color={COLORS.textTertiary}
-          />
-
-          <TextInput
-            value={keywordInput}
-            placeholder="Cari: bensin, gaji, makan..."
-            placeholderTextColor={COLORS.textTertiary}
-            style={riwayatScreenStyles.searchInput}
-            returnKeyType="search"
-            onChangeText={(value) => {
-              setKeywordInput(value);
-              setErrorMessage("");
-            }}
-          />
-
-          {isSearchActive ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Bersihkan pencarian"
-              style={riwayatScreenStyles.clearButton}
-              onPress={handleClearSearch}
-            >
-              <Ionicons name="close" size={18} color={COLORS.textSecondary} />
-            </Pressable>
-          ) : null}
-        </View>
-
-        <View style={riwayatScreenStyles.filterCard}>
-          <Text style={riwayatScreenStyles.filterTitle}>Jenis catatan</Text>
-
-          <View style={riwayatScreenStyles.filterRow}>
-            {JENIS_FILTERS.map((item) => {
-              const selected = jenis === item.value;
-              const isIncome = item.value === "pemasukan";
-              const isExpense = item.value === "pengeluaran";
-
-              return (
-                <Pressable
-                  key={item.value}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  style={({ pressed }) => [
-                    riwayatScreenStyles.filterChip,
-                    selected && riwayatScreenStyles.filterChipActive,
-                    selected && isIncome && riwayatScreenStyles.filterChipIncome,
-                    selected &&
-                      isExpense &&
-                      riwayatScreenStyles.filterChipExpense,
-                    pressed && riwayatScreenStyles.filterChipPressed,
-                  ]}
-                  onPress={() => handleChangeJenis(item.value)}
-                >
-                  <Ionicons
-                    name={item.icon}
-                    size={15}
-                    color={
-                      selected
-                        ? isIncome
-                          ? COLORS.income
-                          : isExpense
-                          ? COLORS.expense
-                          : COLORS.brandPrimary
-                        : COLORS.textSecondary
-                    }
-                  />
-
-                  <Text
-                    style={[
-                      riwayatScreenStyles.filterChipText,
-                      selected && riwayatScreenStyles.filterChipTextActive,
-                      selected &&
-                        isIncome &&
-                        riwayatScreenStyles.filterChipTextIncome,
-                      selected &&
-                        isExpense &&
-                        riwayatScreenStyles.filterChipTextExpense,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text style={riwayatScreenStyles.filterTitle}>Waktu</Text>
-
-          <View style={riwayatScreenStyles.periodRow}>
-            {PERIODE_FILTERS.map((item) => {
-              const selected = periode === item.value;
-
-              return (
-                <Pressable
-                  key={item.value}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  style={({ pressed }) => [
-                    riwayatScreenStyles.periodChip,
-                    selected && riwayatScreenStyles.periodChipActive,
-                    pressed && riwayatScreenStyles.filterChipPressed,
-                  ]}
-                  onPress={() => handleChangePeriode(item.value)}
-                >
-                  <Text
-                    style={[
-                      riwayatScreenStyles.periodChipText,
-                      selected && riwayatScreenStyles.periodChipTextActive,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {periode === "pilih_bulan" ? (
-            <View style={riwayatScreenStyles.customMonthWrap}>
-              <AppDateField
-                label="Pilih bulan"
-                value={customMonthDate}
-                onChangeDate={handleCustomMonthChange}
-                helperText="Pilih tanggal apa saja di bulan yang ingin dilihat."
-              />
-            </View>
-          ) : null}
-
-          {hasActiveFilter ? (
-            <AppButton
-              title="Reset filter"
-              variant="secondary"
-              style={riwayatScreenStyles.resetFilterButton}
-              onPress={handleResetFilter}
-            />
-          ) : null}
-        </View>
-
-        <AppCard style={riwayatScreenStyles.summaryCard}>
-          <View style={riwayatScreenStyles.summaryTopRow}>
-            <View>
-              <Text style={riwayatScreenStyles.summaryTitle}>
-                {periodeTitle}
-              </Text>
-              <Text style={riwayatScreenStyles.summarySubtitle}>
-                {summary.jumlahTransaksi} transaksi ditemukan
-              </Text>
-            </View>
-
-            <View style={riwayatScreenStyles.summaryCountPill}>
-              <Ionicons
-                name="document-text-outline"
-                size={16}
-                color={COLORS.brandPrimary}
-              />
-              <Text style={riwayatScreenStyles.summaryCountText}>
-                {summary.jumlahTransaksi}
-              </Text>
-            </View>
-          </View>
-
-          <View style={riwayatScreenStyles.summaryGrid}>
-            <View style={riwayatScreenStyles.summaryItem}>
-              <Text style={riwayatScreenStyles.summaryLabel}>Uang masuk</Text>
-              <Text style={riwayatScreenStyles.summaryValueIncome}>
-                {formatRupiah(summary.totalPemasukan)}
-              </Text>
-            </View>
-
-            <View style={riwayatScreenStyles.summaryItemLast}>
-              <Text style={riwayatScreenStyles.summaryLabel}>Uang keluar</Text>
-              <Text style={riwayatScreenStyles.summaryValueExpense}>
-                {formatRupiah(summary.totalPengeluaran)}
-              </Text>
-            </View>
-          </View>
-
-          <View
-            style={[
-              riwayatScreenStyles.netSummary,
-              summary.saldoBersih >= 0
-                ? riwayatScreenStyles.netSummaryPositive
-                : riwayatScreenStyles.netSummaryNegative,
-            ]}
-          >
-            <View>
-              <Text style={riwayatScreenStyles.netLabel}>Selisih periode</Text>
-              <Text
-                style={
-                  summary.saldoBersih >= 0
-                    ? riwayatScreenStyles.netValuePositive
-                    : riwayatScreenStyles.netValueNegative
-                }
-              >
-                {formatRupiah(summary.saldoBersih)}
-              </Text>
-            </View>
-
-            <Ionicons
-              name={summary.saldoBersih >= 0 ? "trending-up" : "trending-down"}
-              size={24}
-              color={summary.saldoBersih >= 0 ? COLORS.income : COLORS.expense}
-            />
-          </View>
-        </AppCard>
-
-        {!!errorMessage ? (
-          <Text style={riwayatScreenStyles.errorText}>{errorMessage}</Text>
-        ) : null}
-
-        <View style={riwayatScreenStyles.listHeader}>
-          <Text style={riwayatScreenStyles.listTitle}>Daftar transaksi</Text>
-          <Text style={riwayatScreenStyles.listSubtitle}>
-            Ketuk transaksi untuk mengubah atau menghapus.
-          </Text>
-        </View>
-      </View>
-    );
-  }, [
-    customMonthDate,
-    errorMessage,
-    handleBack,
-    handleChangeJenis,
-    handleChangePeriode,
-    handleClearSearch,
-    handleCustomMonthChange,
-    handleResetFilter,
-    hasActiveFilter,
-    isTabMode,
-    jenis,
-    keywordInput,
-    periode,
-    summary.jumlahTransaksi,
-    summary.saldoBersih,
-    summary.totalPemasukan,
-    summary.totalPengeluaran,
-  ]);
+  const headerComponent = useMemo(
+    () => (
+      <RiwayatHeader
+        isTabMode={isTabMode}
+        onBack={handleBack}
+        keywordInput={keywordInput}
+        onKeywordChange={(value) => {
+          setKeywordInput(value);
+          setErrorMessage("");
+        }}
+        onClearSearch={handleClearSearch}
+        jenis={jenis}
+        onChangeJenis={handleChangeJenis}
+        periode={periode}
+        onChangePeriode={handleChangePeriode}
+        customMonthDate={customMonthDate}
+        onCustomMonthChange={handleCustomMonthChange}
+        hasActiveFilter={hasActiveFilter}
+        onResetFilter={handleResetFilter}
+        periodeTitle={getPeriodeTitle(periode, customMonthDate)}
+        summary={summary}
+        errorMessage={errorMessage}
+      />
+    ),
+    [
+      customMonthDate,
+      errorMessage,
+      handleBack,
+      handleChangeJenis,
+      handleChangePeriode,
+      handleClearSearch,
+      handleCustomMonthChange,
+      handleResetFilter,
+      hasActiveFilter,
+      isTabMode,
+      jenis,
+      keywordInput,
+      periode,
+      summary,
+    ]
+  );
 
   const renderRow = useCallback(
     ({ item }: { item: ListRow }) => {
@@ -1050,11 +1106,9 @@ export default function RiwayatTransaksiPage() {
       <View style={riwayatScreenStyles.listWrap}>
         <FlashList<ListRow>
           data={groupedRows}
-          // @ts-expect-error: Tipe FlashList v2 bentrok dengan transisi React 19. Runtime mutlak butuh properti ini.
-          estimatedItemSize={72}
           keyExtractor={keyExtractor}
           renderItem={renderRow}
-          ListHeaderComponent={renderHeader}
+          ListHeaderComponent={headerComponent}
           contentContainerStyle={{
             paddingTop: 0,
             paddingBottom: listBottomPadding,

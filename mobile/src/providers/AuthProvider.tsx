@@ -330,11 +330,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return;
     }
 
+    const client = supabase;
+
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {
-        supabase.auth.startAutoRefresh();
+        client.auth.startAutoRefresh();
       } else {
-        supabase.auth.stopAutoRefresh();
+        client.auth.stopAutoRefresh();
       }
     });
 

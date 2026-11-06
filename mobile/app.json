@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/DompetKu_icon.png",
     "scheme": "dompetku",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
     },

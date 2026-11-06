@@ -38,33 +38,6 @@ function formatRupiah(value: number) {
   }).format(nominal);
 }
 
-async function ensureKoreksiSaldoDompetTable(db: SQLiteDatabase) {
-  await db.execAsync(`
-    CREATE TABLE IF NOT EXISTS koreksi_saldo_dompet (
-      id TEXT PRIMARY KEY NOT NULL,
-      dompet_id TEXT NOT NULL,
-      nama_dompet_snapshot TEXT NOT NULL,
-      saldo_sebelum REAL NOT NULL,
-      saldo_sesudah REAL NOT NULL,
-      selisih REAL NOT NULL,
-      catatan TEXT,
-      sumber TEXT NOT NULL DEFAULT 'manual',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (dompet_id) REFERENCES dompet(id) ON DELETE RESTRICT
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_koreksi_saldo_dompet_dompet_id
-      ON koreksi_saldo_dompet (dompet_id);
-
-    CREATE INDEX IF NOT EXISTS idx_koreksi_saldo_dompet_created_at
-      ON koreksi_saldo_dompet (created_at DESC);
-
-    CREATE INDEX IF NOT EXISTS idx_koreksi_saldo_dompet_updated_at
-      ON koreksi_saldo_dompet (updated_at DESC);
-  `);
-}
-
 export async function getSemuaDompetAktif(
   db: SQLiteDatabase
 ): Promise<DompetRow[]> {
@@ -207,7 +180,6 @@ export async function ubahSaldoDompetLokal(
     throw new Error("Saldo baru dompet tidak valid.");
   }
 
-  await ensureKoreksiSaldoDompetTable(db);
   const now = getNowIso();
   let auditId = "";
 
@@ -290,8 +262,6 @@ export async function getRiwayatKoreksiSaldoDompet(
     dompetId?: string | null;
   }
 ): Promise<KoreksiSaldoDompetRow[]> {
-  await ensureKoreksiSaldoDompetTable(db);
-
   const limit = Math.max(1, Math.min(payload?.limit ?? 50, 100));
   const offset = Math.max(0, payload?.offset ?? 0);
   const dompetId = payload?.dompetId ?? null;

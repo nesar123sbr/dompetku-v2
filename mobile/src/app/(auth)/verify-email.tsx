@@ -56,7 +56,7 @@ export default function VerifyEmailPage() {
       });
 
       setSuccessMessage(
-        "Verifikasi berhasil. Session akun sudah aktif."
+        "Verifikasi berhasil. Akun kamu sudah aktif."
       );
 
       router.replace(ROUTES.PROTECTED.DASHBOARD);
@@ -113,8 +113,8 @@ export default function VerifyEmailPage() {
         </Text>
 
         <Text style={authScreenStyles.inlineNote}>
-          Kode verifikasi Supabase memiliki masa berlaku terbatas. Kalau kodenya
-          kadaluarsa, kirim ulang dari tombol di bawah.
+          Kode verifikasi memiliki masa berlaku terbatas. Kalau kodenya
+          kedaluwarsa, kirim ulang dari tombol di bawah.
         </Text>
       </AppCard>
 
@@ -159,8 +159,8 @@ export default function VerifyEmailPage() {
       />
 
       <Text style={authScreenStyles.helperText}>
-        Flow ini memakai OTP email dari template Supabase. Kalau email tidak
-        masuk, cek folder spam/promotions, lalu kirim ulang dari tombol di atas.
+        Kode dikirim melalui email. Kalau email tidak masuk, cek folder spam atau
+        promosi, lalu kirim ulang dari tombol di atas.
       </Text>
     </AuthShell>
   );

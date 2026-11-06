@@ -78,16 +78,31 @@ async function getDompetAktifById(
   return row ?? null;
 }
 
+function escapeLikePattern(val: string): string {
+  return val.replace(/([%_\\])/g, "\\$1");
+}
+
 function validateTransaksiInput(payload: {
   judul: string;
   jumlah: number;
+  tanggalTransaksi?: string;
 }) {
   if (payload.judul.trim().length < 2) {
     throw new Error("Judul transaksi minimal 2 karakter.");
   }
 
-  if (!Number.isFinite(payload.jumlah) || payload.jumlah <= 0) {
-    throw new Error("Jumlah transaksi harus lebih dari 0.");
+  if (
+    !Number.isFinite(payload.jumlah) ||
+    !Number.isSafeInteger(payload.jumlah) ||
+    payload.jumlah <= 0
+  ) {
+    throw new Error("Jumlah transaksi harus berupa bilangan bulat lebih dari 0.");
+  }
+
+  if (payload.tanggalTransaksi) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.tanggalTransaksi)) {
+      throw new Error("Format tanggal transaksi harus YYYY-MM-DD.");
+    }
   }
 }
 
@@ -98,6 +113,7 @@ export async function tambahPemasukanLokal(
   validateTransaksiInput({
     judul: payload.judul,
     jumlah: payload.jumlah,
+    tanggalTransaksi: payload.tanggalTransaksi,
   });
 
   const now = getNowIso();
@@ -176,6 +192,7 @@ export async function tambahPengeluaranLokal(
   validateTransaksiInput({
     judul: payload.judul,
     jumlah: payload.jumlah,
+    tanggalTransaksi: payload.tanggalTransaksi,
   });
 
   const now = getNowIso();
@@ -506,6 +523,7 @@ export async function ubahTransaksiLokalDanSesuaikanSaldo(
   validateTransaksiInput({
     judul: payload.judul,
     jumlah: payload.jumlah,
+    tanggalTransaksi: payload.tanggalTransaksi,
   });
 
   const now = getNowIso();
@@ -715,7 +733,7 @@ export async function getRiwayatTransaksiPaged(
   const limit = Math.max(1, Math.min(payload.limit ?? 30, 100));
   const offset = Math.max(0, payload.offset ?? 0);
   const cleanKeyword = payload.keyword?.trim() ?? "";
-  const keyword = `%${cleanKeyword}%`;
+  const keyword = cleanKeyword ? `%${escapeLikePattern(cleanKeyword)}%` : "%%";
   const jenis = payload.jenis ?? "semua";
 
   const rows = await db.getAllAsync<RiwayatTransaksiRow>(
@@ -742,18 +760,18 @@ export async function getRiwayatTransaksiPaged(
           AND ($jenis = 'semua' OR $jenis = 'pemasukan')
           AND (
             $tanggal_mulai IS NULL
-            OR date(p.tanggal_transaksi) >= date($tanggal_mulai)
+            OR p.tanggal_transaksi >= $tanggal_mulai
           )
           AND (
             $tanggal_selesai IS NULL
-            OR date(p.tanggal_transaksi) <= date($tanggal_selesai)
+            OR p.tanggal_transaksi <= $tanggal_selesai
           )
           AND (
             $keyword = '%%'
-            OR p.judul LIKE $keyword
-            OR COALESCE(p.catatan, '') LIKE $keyword
-            OR COALESCE(d.nama, '') LIKE $keyword
-            OR COALESCE(kp.nama, '') LIKE $keyword
+            OR p.judul LIKE $keyword ESCAPE '\\'
+            OR COALESCE(p.catatan, '') LIKE $keyword ESCAPE '\\'
+            OR COALESCE(d.nama, '') LIKE $keyword ESCAPE '\\'
+            OR COALESCE(kp.nama, '') LIKE $keyword ESCAPE '\\'
           )
 
         UNION ALL
@@ -778,18 +796,18 @@ export async function getRiwayatTransaksiPaged(
           AND ($jenis = 'semua' OR $jenis = 'pengeluaran')
           AND (
             $tanggal_mulai IS NULL
-            OR date(g.tanggal_transaksi) >= date($tanggal_mulai)
+            OR g.tanggal_transaksi >= $tanggal_mulai
           )
           AND (
             $tanggal_selesai IS NULL
-            OR date(g.tanggal_transaksi) <= date($tanggal_selesai)
+            OR g.tanggal_transaksi <= $tanggal_selesai
           )
           AND (
             $keyword = '%%'
-            OR g.judul LIKE $keyword
-            OR COALESCE(g.catatan, '') LIKE $keyword
-            OR COALESCE(d.nama, '') LIKE $keyword
-            OR COALESCE(kg.nama, '') LIKE $keyword
+            OR g.judul LIKE $keyword ESCAPE '\\'
+            OR COALESCE(g.catatan, '') LIKE $keyword ESCAPE '\\'
+            OR COALESCE(d.nama, '') LIKE $keyword ESCAPE '\\'
+            OR COALESCE(kg.nama, '') LIKE $keyword ESCAPE '\\'
           )
       ) transaksi
       ORDER BY tanggal_transaksi DESC, created_at DESC
@@ -818,7 +836,7 @@ export async function getRingkasanRiwayatTransaksi(
   }
 ): Promise<RingkasanRiwayatTransaksi> {
   const cleanKeyword = payload.keyword?.trim() ?? "";
-  const keyword = `%${cleanKeyword}%`;
+  const keyword = cleanKeyword ? `%${escapeLikePattern(cleanKeyword)}%` : "%%";
   const jenis = payload.jenis ?? "semua";
 
   const row = await db.getFirstAsync<RingkasanRiwayatTransaksiSqlRow>(
@@ -856,18 +874,18 @@ export async function getRingkasanRiwayatTransaksi(
           AND ($jenis = 'semua' OR $jenis = 'pemasukan')
           AND (
             $tanggal_mulai IS NULL
-            OR date(p.tanggal_transaksi) >= date($tanggal_mulai)
+            OR p.tanggal_transaksi >= $tanggal_mulai
           )
           AND (
             $tanggal_selesai IS NULL
-            OR date(p.tanggal_transaksi) <= date($tanggal_selesai)
+            OR p.tanggal_transaksi <= $tanggal_selesai
           )
           AND (
             $keyword = '%%'
-            OR p.judul LIKE $keyword
-            OR COALESCE(p.catatan, '') LIKE $keyword
-            OR COALESCE(d.nama, '') LIKE $keyword
-            OR COALESCE(kp.nama, '') LIKE $keyword
+            OR p.judul LIKE $keyword ESCAPE '\\'
+            OR COALESCE(p.catatan, '') LIKE $keyword ESCAPE '\\'
+            OR COALESCE(d.nama, '') LIKE $keyword ESCAPE '\\'
+            OR COALESCE(kp.nama, '') LIKE $keyword ESCAPE '\\'
           )
 
         UNION ALL
@@ -884,18 +902,18 @@ export async function getRingkasanRiwayatTransaksi(
           AND ($jenis = 'semua' OR $jenis = 'pengeluaran')
           AND (
             $tanggal_mulai IS NULL
-            OR date(g.tanggal_transaksi) >= date($tanggal_mulai)
+            OR g.tanggal_transaksi >= $tanggal_mulai
           )
           AND (
             $tanggal_selesai IS NULL
-            OR date(g.tanggal_transaksi) <= date($tanggal_selesai)
+            OR g.tanggal_transaksi <= $tanggal_selesai
           )
           AND (
             $keyword = '%%'
-            OR g.judul LIKE $keyword
-            OR COALESCE(g.catatan, '') LIKE $keyword
-            OR COALESCE(d.nama, '') LIKE $keyword
-            OR COALESCE(kg.nama, '') LIKE $keyword
+            OR g.judul LIKE $keyword ESCAPE '\\'
+            OR COALESCE(g.catatan, '') LIKE $keyword ESCAPE '\\'
+            OR COALESCE(d.nama, '') LIKE $keyword ESCAPE '\\'
+            OR COALESCE(kg.nama, '') LIKE $keyword ESCAPE '\\'
           )
       ) transaksi
     `,
