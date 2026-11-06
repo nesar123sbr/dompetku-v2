@@ -13,6 +13,7 @@ import {
   type AppStateStatus,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Network from "expo-network";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { COLORS, FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from "@/constants";
@@ -128,6 +129,11 @@ export default function CloudAutoSyncProvider({
         return;
       }
 
+      const netState = await Network.getNetworkStateAsync().catch(() => null);
+      if (!netState?.isConnected || netState?.isInternetReachable === false) {
+        return;
+      }
+
       try {
         isSyncingRef.current = true;
         lastSyncAttemptAtRef.current = now;
@@ -161,6 +167,12 @@ export default function CloudAutoSyncProvider({
       } catch (error) {
         console.log("auto sync gagal:", error);
         if (!isMountedRef.current) return; // ABSOLUT
+        const net = await Network.getNetworkStateAsync().catch(() => null);
+        if (!net?.isConnected || net?.isInternetReachable === false) {
+          setSyncStatus("idle");
+          setSyncMessage("");
+          return;
+        }
         showStatus("error", "Sinkronisasi gagal. Coba nanti.");
         hideLater(ERROR_VISIBLE_MS);
       } finally {
@@ -225,12 +237,16 @@ export default function CloudAutoSyncProvider({
       clearStartupTimer();
       clearResumeTimer();
 
-      setSyncStatus("idle");
-      setSyncMessage("");
+      if (syncStatus !== "idle") {
+        setSyncStatus("idle");
+      }
+      if (syncMessage !== "") {
+        setSyncMessage("");
+      }
       isSyncingRef.current = false;
       lastSyncAttemptAtRef.current = 0;
     }
-  }, [clearHideTimer, clearResumeTimer, clearStartupTimer, userId]);
+  }, [clearHideTimer, clearResumeTimer, clearStartupTimer, syncMessage, syncStatus, userId]);
 
   useEffect(() => {
     return () => {

@@ -102,7 +102,7 @@ export async function getRingkasanDanaDarurat(
       LEFT JOIN kategori_pengeluaran kg
         ON kg.id = g.kategori_id
       WHERE g.is_deleted = 0
-        AND date(g.tanggal_transaksi) >= date('now', '-30 day')
+        AND date(g.tanggal_transaksi) >= date('now', 'localtime', '-30 day')
         AND kg.kelompok IN ('kebutuhan', 'rutin')
     `
   );

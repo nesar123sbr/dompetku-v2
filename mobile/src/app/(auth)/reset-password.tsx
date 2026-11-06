@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Keyboard, Text } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -17,15 +17,44 @@ export default function ResetPasswordPage() {
   const params = useLocalSearchParams<{ email?: string }>();
   const email = typeof params.email === "string" ? params.email : "";
 
-  const { resetPasswordWithOtp } = useAuthSession();
+  const { resetPasswordWithOtp, sendPasswordResetOtp } = useAuthSession();
 
   const [token, setToken] = useState("");
   const [passwordBaru, setPasswordBaru] = useState("");
   const [konfirmasiPassword, setKonfirmasiPassword] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(60);
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setCooldownSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownSeconds]);
+
+  async function handleResendResetCode() {
+    if (cooldownSeconds > 0 || isResending || !email) return;
+
+    try {
+      setFormError("");
+      setSuccessMessage("");
+      setIsResending(true);
+      await sendPasswordResetOtp(email);
+      setCooldownSeconds(60);
+      setSuccessMessage("Kode reset baru berhasil dikirim. Cek email kamu.");
+    } catch (error) {
+      setFormError(
+        error instanceof Error ? error.message : "Gagal mengirim ulang kode reset."
+      );
+    } finally {
+      setIsResending(false);
+    }
+  }
 
   async function handleResetPassword() {
     Keyboard.dismiss();
@@ -156,9 +185,23 @@ export default function ResetPasswordPage() {
       />
 
       <AppButton
-        title="Kembali ke masuk"
+        title={
+          isResending
+            ? "Mengirim kode baru..."
+            : cooldownSeconds > 0
+            ? `Kirim ulang kode (${cooldownSeconds}d)`
+            : "Kirim ulang kode reset"
+        }
         variant="secondary"
         style={authScreenStyles.secondaryButton}
+        disabled={isResending || cooldownSeconds > 0}
+        onPress={handleResendResetCode}
+      />
+
+      <AppButton
+        title="Kembali ke masuk"
+        variant="secondary"
+        style={authScreenStyles.tertiaryButton}
         onPress={() => router.replace(ROUTES.AUTH.SIGN_IN)}
       />
     </AuthShell>

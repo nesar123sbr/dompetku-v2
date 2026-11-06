@@ -66,3 +66,30 @@ ReactNativeJS: 'Global ErrorBoundary caught error:', { [Error: Error code 1: no 
 - **Konversi TypeScript**: Mengonversi `mobile/src/lib/supabase.js` menjadi `mobile/src/lib/supabase.ts` dengan pengetikan `SupabaseClient` yang aman.
 - **Privasi & Backup Android**: Menambahkan `"allowBackup": false` pada konfigurasi Android di `mobile/app.json` untuk mencegah pencadangan otomatis berkas database keuangan SQLite dan token otentikasi ke Google Drive / cloud backup Android.
 - **Konfigurasi EAS**: Memperbarui profil `preview`, `development`, dan `production` di `mobile/eas.json` dengan channel eksplisit dan distribusi internal.
+
+---
+
+## 4. Rincian Perbaikan Fase 2 (Bug Logika Sinkronisasi, Anggaran, & Navigasi)
+
+### 4.1 UI Layout & Tab Bar Floating Space (B11)
+- `mobile/src/components/ui/AppScreen.tsx`: Mengubah nilai bawaan `withFloatingTabSpace` menjadi `false` agar layar stack biasa (seperti form transaksi, audit saldo, riwayat) tidak memiliki ruang kosong berlebih di bagian bawah.
+- Mengaktifkan `withFloatingTabSpace` secara eksplisit hanya pada 4 layar tab utama: `dashboard.tsx`, `insight.tsx`, `profil.tsx`, dan `wallet.tsx`.
+
+### 4.2 Zona Waktu SQLite (B12)
+- `mobile/src/database/repositories/wallet.repository.ts`: Mengubah `date('now', '-30 day')` menjadi `date('now', 'localtime', '-30 day')` agar kalkulasi mutasi 30 hari terakhir selaras dengan waktu lokal pengguna (WIB/WITA/WIT).
+
+### 4.3 Navigasi Modal & State Bersih (B9 & B10)
+- `mobile/src/app/(protected)/(tabs)/wallet.tsx`: Menambahkan `router.setParams({ action: undefined })` seketika setelah modal transfer dibuka dari route query agar modal tidak terbuka ulang saat berpindah tab.
+- `mobile/src/providers/AuthProvider.tsx` & `mobile/src/app/(auth)/_layout.tsx`: Menambahkan state `isRecoveringPassword`. Saat verifikasi OTP pemulihan sandi berhasil, sesi aktif tidak langsung me-redirect pengguna ke `/dashboard`, melainkan menahan navigator tetap di layar `reset-password.tsx` hingga kata sandi baru berhasil disimpan.
+
+### 4.4 Cooldown Resend OTP & Reset Code (B14)
+- `mobile/src/app/(auth)/verify-email.tsx` & `mobile/src/app/(auth)/reset-password.tsx`: Menambahkan timer cooldown 60 detik dengan tampilan waktu mundur pada tombol kirim ulang kode OTP/reset untuk mencegah *rate-limiting* dari penyedia email Supabase.
+
+### 4.5 Sinkronisasi Otomatis Tahan Kondisi Offline (B13)
+- `mobile/src/providers/CloudAutoSyncProvider.tsx`: Menambahkan pengecekan status jaringan via `Network.getNetworkStateAsync()`. Jika perangkat offline, sinkronisasi otomatis dilewati secara diam-diam tanpa memicu toast pesan kesalahan yang mengganggu pengguna.
+
+### 4.6 Input Pencarian Stabil pada Riwayat Transaksi (B8)
+- `mobile/src/app/(protected)/riwayat-transaksi.tsx`: Mengisolasi input pencarian ke dalam komponen memo `RiwayatSearchBar` dengan *local state*. Setiap ketikan huruf tidak lagi memicu pembuatan ulang JSX `ListHeaderComponent` pada `FlashList`, sehingga *keyboard focus* tidak pernah lepas (*unmount*) saat pengguna mengetik.
+
+### 4.7 Batching & Chunking Payload Sinkronisasi (B5)
+- `mobile/src/services/sync/engine.ts`: Mengimplementasikan pembagian payload dorong (*push chunking*) dengan ukuran maksimal 300 entitas per batch dan urutan ketergantungan relasi (*foreign keys*): data master (profil, dompet, kategori) dikirim terlebih dahulu sebelum *batches* transaksi, transfer, koreksi, anggaran, dan pengingat.

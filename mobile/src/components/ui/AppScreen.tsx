@@ -55,7 +55,7 @@ export default function AppScreen({
   safeTop = false,
   style,
   contentContainerStyle,
-  withFloatingTabSpace = true,
+  withFloatingTabSpace = false,
   keyboardShouldPersistTaps = "handled",
   keyboardDismissMode = Platform.OS === "ios" ? "interactive" : "on-drag",
   automaticallyAdjustKeyboardInsets = false,

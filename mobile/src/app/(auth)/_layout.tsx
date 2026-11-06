@@ -4,13 +4,13 @@ import { ROUTES } from "@/constants";
 import { useAuthSession } from "@/providers/AuthProvider";
 
 export default function AuthLayout() {
-  const { session, isReady } = useAuthSession();
+  const { session, isReady, isRecoveringPassword } = useAuthSession();
 
   if (!isReady) {
     return <AppLoader label="Menyiapkan autentikasi..." />;
   }
 
-  if (session) {
+  if (session && !isRecoveringPassword) {
     return <Redirect href={ROUTES.PROTECTED.DASHBOARD} />;
   }
 

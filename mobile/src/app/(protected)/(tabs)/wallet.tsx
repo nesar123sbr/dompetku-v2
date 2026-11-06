@@ -546,8 +546,9 @@ export default function WalletTabPage() {
   useEffect(() => {
     if (params.action === "transfer" && dompetList.length > 0) {
       openTransferPanel();
+      router.setParams({ action: undefined });
     }
-  }, [params.action, dompetList.length, openTransferPanel]);
+  }, [params.action, dompetList.length, openTransferPanel, router]);
 
   function openTransferDariDompet(dompetId: string) {
     Keyboard.dismiss();

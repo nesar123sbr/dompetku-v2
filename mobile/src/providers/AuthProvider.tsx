@@ -47,6 +47,8 @@ type AuthContextValue = {
   isGuestMode: boolean;
   isOfflineSession: boolean;
   canAccessApp: boolean;
+  isRecoveringPassword: boolean;
+  setIsRecoveringPassword: (value: boolean) => void;
   akunLokal: AkunSupabaseLokalInfo | null;
 
   enterGuestMode: () => Promise<void>;
@@ -118,6 +120,8 @@ const AuthContext = createContext<AuthContextValue>({
   isGuestMode: false,
   isOfflineSession: false,
   canAccessApp: false,
+  isRecoveringPassword: false,
+  setIsRecoveringPassword: () => {},
   akunLokal: EMPTY_AKUN_LOKAL,
 
   enterGuestMode: async () => {},
@@ -233,6 +237,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const [isLocalReady, setIsLocalReady] = useState(false);
   const [isRemoteReady, setIsRemoteReady] = useState(false);
+  const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
 
   // 👇 HOTFIX 0.1: Duplicate getModePenggunaan dihapus
   const refreshLocalState = useCallback(async () => {
@@ -557,9 +562,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
       token: string;
       passwordBaru: string;
     }) => {
-      await resetPasswordDenganOtp(payload);
-      setSession(null);
-      await refreshLocalState();
+      setIsRecoveringPassword(true);
+      try {
+        await resetPasswordDenganOtp(payload);
+        setSession(null);
+        await refreshLocalState();
+      } finally {
+        setIsRecoveringPassword(false);
+      }
     },
     [refreshLocalState]
   );
@@ -589,6 +599,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isGuestMode,
       isOfflineSession,
       canAccessApp,
+      isRecoveringPassword,
+      setIsRecoveringPassword,
       akunLokal,
 
       enterGuestMode,
@@ -614,6 +626,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isGuestMode,
     isOfflineSession,
     canAccessApp,
+    isRecoveringPassword,
     akunLokal,
     enterGuestMode,
     exitGuestMode,

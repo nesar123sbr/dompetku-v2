@@ -371,11 +371,79 @@ const TransactionRow = memo(function TransactionRow({
   );
 });
 
+type RiwayatSearchBarProps = {
+  keyword: string;
+  onDebouncedSearch: (value: string) => void;
+  onClearSearch: () => void;
+};
+
+const RiwayatSearchBar = memo(function RiwayatSearchBar({
+  keyword,
+  onDebouncedSearch,
+  onClearSearch,
+}: RiwayatSearchBarProps) {
+  const [localInput, setLocalInput] = useState(keyword);
+  const [prevKeyword, setPrevKeyword] = useState(keyword);
+
+  if (keyword !== prevKeyword) {
+    setPrevKeyword(keyword);
+    setLocalInput(keyword);
+  }
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      const sanitized = localInput.replace(/\s+/g, " ").trim();
+      if (sanitized !== keyword) {
+        onDebouncedSearch(sanitized);
+      }
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timeoutId);
+  }, [localInput, keyword, onDebouncedSearch]);
+
+  const handleClear = useCallback(() => {
+    setLocalInput("");
+    onClearSearch();
+  }, [onClearSearch]);
+
+  const isSearchActive = localInput.trim().length > 0;
+
+  return (
+    <View style={riwayatScreenStyles.searchCard}>
+      <Ionicons
+        name="search-outline"
+        size={20}
+        color={COLORS.textTertiary}
+      />
+
+      <TextInput
+        value={localInput}
+        placeholder="Cari: bensin, gaji, makan..."
+        placeholderTextColor={COLORS.textTertiary}
+        style={riwayatScreenStyles.searchInput}
+        returnKeyType="search"
+        onChangeText={setLocalInput}
+      />
+
+      {isSearchActive ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Bersihkan pencarian"
+          style={riwayatScreenStyles.clearButton}
+          onPress={handleClear}
+        >
+          <Ionicons name="close" size={18} color={COLORS.textSecondary} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+});
+
 type RiwayatHeaderProps = {
   isTabMode: boolean;
   onBack: () => void;
-  keywordInput: string;
-  onKeywordChange: (value: string) => void;
+  keyword: string;
+  onDebouncedSearch: (value: string) => void;
   onClearSearch: () => void;
   jenis: FilterJenis;
   onChangeJenis: (nextJenis: FilterJenis) => void;
@@ -393,8 +461,8 @@ type RiwayatHeaderProps = {
 const RiwayatHeader = memo(function RiwayatHeader({
   isTabMode,
   onBack,
-  keywordInput,
-  onKeywordChange,
+  keyword,
+  onDebouncedSearch,
   onClearSearch,
   jenis,
   onChangeJenis,
@@ -408,7 +476,6 @@ const RiwayatHeader = memo(function RiwayatHeader({
   summary,
   errorMessage,
 }: RiwayatHeaderProps) {
-  const isSearchActive = keywordInput.trim().length > 0;
 
   return (
     <View>
@@ -438,33 +505,11 @@ const RiwayatHeader = memo(function RiwayatHeader({
         </View>
       </View>
 
-      <View style={riwayatScreenStyles.searchCard}>
-        <Ionicons
-          name="search-outline"
-          size={20}
-          color={COLORS.textTertiary}
-        />
-
-        <TextInput
-          value={keywordInput}
-          placeholder="Cari: bensin, gaji, makan..."
-          placeholderTextColor={COLORS.textTertiary}
-          style={riwayatScreenStyles.searchInput}
-          returnKeyType="search"
-          onChangeText={onKeywordChange}
-        />
-
-        {isSearchActive ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Bersihkan pencarian"
-            style={riwayatScreenStyles.clearButton}
-            onPress={onClearSearch}
-          >
-            <Ionicons name="close" size={18} color={COLORS.textSecondary} />
-          </Pressable>
-        ) : null}
-      </View>
+      <RiwayatSearchBar
+        keyword={keyword}
+        onDebouncedSearch={onDebouncedSearch}
+        onClearSearch={onClearSearch}
+      />
 
       <View style={riwayatScreenStyles.filterCard}>
         <Text style={riwayatScreenStyles.filterTitle}>Jenis catatan</Text>
@@ -679,7 +724,6 @@ export default function RiwayatTransaksiPage() {
   const [summary, setSummary] =
     useState<RingkasanRiwayatTransaksi>(EMPTY_SUMMARY);
 
-  const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [jenis, setJenis] = useState<FilterJenis>("semua");
   const [periode, setPeriode] = useState<FilterPeriode>("bulan_ini");
@@ -699,20 +743,9 @@ export default function RiwayatTransaksiPage() {
   const groupedRows = useMemo(() => buildGroupedRows(items), [items]);
 
   const hasActiveFilter =
-    keywordInput.trim().length > 0 ||
+    keyword.trim().length > 0 ||
     jenis !== "semua" ||
     periode !== "bulan_ini";
-
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      const sanitizedKeyword = keywordInput.replace(/\s+/g, " ").trim();
-      setKeyword(sanitizedKeyword);
-    }, SEARCH_DEBOUNCE_MS);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [keywordInput]);
 
   const loadFirstPage = useCallback(
     async (showFullLoader = false) => {
@@ -833,15 +866,18 @@ export default function RiwayatTransaksiPage() {
     keyword,
   ]);
 
+  // Effect untuk pembaruan filter (keyword, jenis, rentang tanggal)
+  useEffect(() => {
+    if (isFirstMountRef.current) return;
+    loadFirstPage(false);
+  }, [keyword, jenis, dateRange.tanggalMulai, dateRange.tanggalSelesai, loadFirstPage]);
+
   useFocusEffect(
     useCallback(() => {
-      // ✅ PATCH 5: Cegah Keyboard Dismiss Paksa
       if (isFirstMountRef.current) {
-        // Layar penuh (spinner) HANYA saat buka halaman pertama kali
         loadFirstPage(true);
         isFirstMountRef.current = false;
       } else {
-        // Silent loader (spinner kecil) saat user mengetik / pindah tab & kembali
         loadFirstPage(false);
       }
 
@@ -882,14 +918,21 @@ export default function RiwayatTransaksiPage() {
     [resetPagingState]
   );
 
+  const handleDebouncedSearch = useCallback(
+    (sanitized: string) => {
+      setKeyword(sanitized);
+      setErrorMessage("");
+      resetPagingState();
+    },
+    [resetPagingState]
+  );
+
   const handleClearSearch = useCallback(() => {
-    setKeywordInput("");
     setKeyword("");
     resetPagingState();
   }, [resetPagingState]);
 
   const handleResetFilter = useCallback(() => {
-    setKeywordInput("");
     setKeyword("");
     setJenis("semua");
     setPeriode("bulan_ini");
@@ -994,11 +1037,8 @@ export default function RiwayatTransaksiPage() {
       <RiwayatHeader
         isTabMode={isTabMode}
         onBack={handleBack}
-        keywordInput={keywordInput}
-        onKeywordChange={(value) => {
-          setKeywordInput(value);
-          setErrorMessage("");
-        }}
+        keyword={keyword}
+        onDebouncedSearch={handleDebouncedSearch}
         onClearSearch={handleClearSearch}
         jenis={jenis}
         onChangeJenis={handleChangeJenis}
@@ -1021,11 +1061,12 @@ export default function RiwayatTransaksiPage() {
       handleChangePeriode,
       handleClearSearch,
       handleCustomMonthChange,
+      handleDebouncedSearch,
       handleResetFilter,
       hasActiveFilter,
       isTabMode,
       jenis,
-      keywordInput,
+      keyword,
       periode,
       summary,
     ]

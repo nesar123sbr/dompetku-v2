@@ -191,29 +191,89 @@ export async function executeSync(
         pengingatTagihan: localBundle.pengingatTagihan.length,
       };
 
-      const payload = {
-        profilPengguna: {
-          email: user.email ?? "",
-          nama_lengkap:
-            user.user_metadata?.nama_lengkap ??
-            user.user_metadata?.full_name ??
-            "",
-        },
-        dompet: localBundle.dompet.map(mapDompetToCloud),
-        kategoriPemasukan: localBundle.kategoriPemasukan.map(mapKategoriPemasukanToCloud),
-        kategoriPengeluaran: localBundle.kategoriPengeluaran.map(mapKategoriPengeluaranToCloud),
-        pemasukan: localBundle.pemasukan.map(mapPemasukanToCloud),
-        pengeluaran: localBundle.pengeluaran.map(mapPengeluaranToCloud),
-        transferDompet: localBundle.transferDompet.map(mapTransferToCloud),
-        anggaranBulanan: localBundle.anggaranBulanan.map(mapAnggaranToCloud),
-        koreksiSaldoDompet: localBundle.koreksiSaldoDompet.map(mapKoreksiToCloud),
-        pengingatTagihan: localBundle.pengingatTagihan.map(mapPengingatToCloud),
+      const mappedDompet = localBundle.dompet.map(mapDompetToCloud);
+      const mappedKatPem = localBundle.kategoriPemasukan.map(mapKategoriPemasukanToCloud);
+      const mappedKatPeng = localBundle.kategoriPengeluaran.map(mapKategoriPengeluaranToCloud);
+      const mappedPemasukan = localBundle.pemasukan.map(mapPemasukanToCloud);
+      const mappedPengeluaran = localBundle.pengeluaran.map(mapPengeluaranToCloud);
+      const mappedTransfer = localBundle.transferDompet.map(mapTransferToCloud);
+      const mappedAnggaran = localBundle.anggaranBulanan.map(mapAnggaranToCloud);
+      const mappedKoreksi = localBundle.koreksiSaldoDompet.map(mapKoreksiToCloud);
+      const mappedPengingat = localBundle.pengingatTagihan.map(mapPengingatToCloud);
+
+      const totalItems =
+        mappedDompet.length +
+        mappedKatPem.length +
+        mappedKatPeng.length +
+        mappedPemasukan.length +
+        mappedPengeluaran.length +
+        mappedTransfer.length +
+        mappedAnggaran.length +
+        mappedKoreksi.length +
+        mappedPengingat.length;
+
+      const userProfile = {
+        email: user.email ?? "",
+        nama_lengkap:
+          user.user_metadata?.nama_lengkap ??
+          user.user_metadata?.full_name ??
+          "",
       };
 
-      // Push via RPC sync_bundle (LWW di cloud)
-      const { error: pushError } = await client.rpc("sync_bundle", { payload });
-      if (pushError) {
-        throw new Error(`Gagal push sinkronisasi: ${pushError.message}`);
+      if (totalItems <= 300) {
+        // Single batch push (cepat untuk beban data normal)
+        const payload = {
+          profilPengguna: userProfile,
+          dompet: mappedDompet,
+          kategoriPemasukan: mappedKatPem,
+          kategoriPengeluaran: mappedKatPeng,
+          pemasukan: mappedPemasukan,
+          pengeluaran: mappedPengeluaran,
+          transferDompet: mappedTransfer,
+          anggaranBulanan: mappedAnggaran,
+          koreksiSaldoDompet: mappedKoreksi,
+          pengingatTagihan: mappedPengingat,
+        };
+
+        const { error: pushError } = await client.rpc("sync_bundle", { payload });
+        if (pushError) {
+          throw new Error(`Gagal push sinkronisasi: ${pushError.message}`);
+        }
+      } else {
+        // Multi-batch push berurutan sesuai relasi ketergantungan (FK)
+        // 1. Master entities (profil, dompet, kategori)
+        const masterPayload = {
+          profilPengguna: userProfile,
+          dompet: mappedDompet,
+          kategoriPemasukan: mappedKatPem,
+          kategoriPengeluaran: mappedKatPeng,
+          pemasukan: [],
+          pengeluaran: [],
+          transferDompet: [],
+          anggaranBulanan: [],
+          koreksiSaldoDompet: [],
+          pengingatTagihan: [],
+        };
+        const { error: masterErr } = await client.rpc("sync_bundle", { payload: masterPayload });
+        if (masterErr) throw new Error(`Gagal push master data: ${masterErr.message}`);
+
+        // 2. Transaksi & mutasi dalam chunk maksimal 300 baris
+        const CHUNK_SIZE = 300;
+        const pushChunk = async (key: string, items: unknown[]) => {
+          for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+            const chunk = items.slice(i, i + CHUNK_SIZE);
+            const chunkPayload = { [key]: chunk };
+            const { error: chunkErr } = await client.rpc("sync_bundle", { payload: chunkPayload });
+            if (chunkErr) throw new Error(`Gagal push chunk ${key}: ${chunkErr.message}`);
+          }
+        };
+
+        await pushChunk("pemasukan", mappedPemasukan);
+        await pushChunk("pengeluaran", mappedPengeluaran);
+        await pushChunk("transferDompet", mappedTransfer);
+        await pushChunk("koreksiSaldoDompet", mappedKoreksi);
+        await pushChunk("anggaranBulanan", mappedAnggaran);
+        await pushChunk("pengingatTagihan", mappedPengingat);
       }
 
       // 4. Pull data cloud sejak cursor (dengan window overlap 3 menit)

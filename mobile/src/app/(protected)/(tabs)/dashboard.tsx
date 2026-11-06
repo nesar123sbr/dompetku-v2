@@ -171,9 +171,10 @@ function getStatusColor(variant: HomeStatusVariant) {
 
 function DashboardSkeleton() {
   return (
-    <AppScreen scrollable
-    withFloatingTabSpace
-    contentContainerStyle={dashboardScreenStyles.content}>
+    <AppScreen
+      scrollable
+      withFloatingTabSpace
+      contentContainerStyle={dashboardScreenStyles.content}>
       <View style={dashboardScreenStyles.heroCard}>
         <View style={dashboardScreenStyles.heroDecorOne} />
         <View style={dashboardScreenStyles.heroDecorTwo} />
@@ -455,7 +456,9 @@ export default function DashboardTabPage() {
   }
 
   return (
-    <AppScreen scrollable contentContainerStyle={dashboardScreenStyles.content}>
+    <AppScreen
+      scrollable
+      withFloatingTabSpace contentContainerStyle={dashboardScreenStyles.content}>
       <View style={dashboardScreenStyles.heroCard}>
         <View style={dashboardScreenStyles.heroDecorOne} />
         <View style={dashboardScreenStyles.heroDecorTwo} />

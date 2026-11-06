@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Keyboard, Text } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -24,8 +24,17 @@ export default function VerifyEmailPage() {
   const [token, setToken] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setCooldownSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownSeconds]);
 
   async function handleVerifyOtp() {
     Keyboard.dismiss();
@@ -72,6 +81,8 @@ export default function VerifyEmailPage() {
   }
 
   async function handleResendOtp() {
+    if (cooldownSeconds > 0 || isResending) return;
+
     try {
       setFormError("");
       setSuccessMessage("");
@@ -87,6 +98,7 @@ export default function VerifyEmailPage() {
 
       await resendSignupOtp(email);
 
+      setCooldownSeconds(60);
       setSuccessMessage(
         "Kode verifikasi berhasil dikirim ulang. Cek inbox email kamu."
       );
@@ -144,10 +156,16 @@ export default function VerifyEmailPage() {
       />
 
       <AppButton
-        title={isResending ? "Mengirim ulang..." : "Kirim ulang kode"}
+        title={
+          isResending
+            ? "Mengirim ulang..."
+            : cooldownSeconds > 0
+            ? `Kirim ulang (${cooldownSeconds}d)`
+            : "Kirim ulang kode"
+        }
         variant="secondary"
         style={authScreenStyles.secondaryButton}
-        disabled={isResending}
+        disabled={isResending || cooldownSeconds > 0}
         onPress={handleResendOtp}
       />
 
