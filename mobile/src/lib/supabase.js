@@ -2,13 +2,11 @@ import "react-native-url-polyfill/auto";
 import "expo-sqlite/localStorage/install";
 import { AppState } from "react-native";
 import { createClient } from "@supabase/supabase-js";
+import { secureStorage } from "./secureStorage";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
 const supabasePublishableKey =
   process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
-
-
-
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && supabasePublishableKey
@@ -17,7 +15,7 @@ export const isSupabaseConfigured = Boolean(
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabasePublishableKey, {
       auth: {
-        storage: localStorage,
+        storage: secureStorage,
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,

@@ -449,3 +449,46 @@ export async function keluarAkunDanKembaliKeModeLokal(
 
   return await turunkanModeSetelahKeluarAkun(db);
 }
+
+export async function hapusAkunPenggunaCloud(
+  db: SQLiteDatabase,
+  options?: { hapusDataLokal?: boolean }
+) {
+  try {
+    const client = getSupabaseClientOrThrow();
+    const { data: sessionData, error: sessionError } =
+      await client.auth.getSession();
+
+    if (sessionError || !sessionData?.session) {
+      throw new Error(
+        "Tidak ada sesi akun aktif. Masuk kembali terlebih dahulu untuk menghapus akun."
+      );
+    }
+
+    const { data, error } = await client.functions.invoke("delete-account", {
+      method: "POST",
+    });
+
+    if (error) {
+      const serverMsg =
+        (data && typeof data === "object" && "error" in data
+          ? (data as { error: string }).error
+          : null) ?? error.message;
+      throw new Error(serverMsg || "Gagal menghapus akun di cloud.");
+    }
+
+    await client.auth.signOut({ scope: "local" }).catch(() => {});
+
+    if (options?.hapusDataLokal) {
+      await hapusSemuaDataLokal(db);
+      return MODE_PENGGUNAAN.NONE;
+    }
+
+    return await turunkanModeSetelahKeluarAkun(db);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(getFriendlyAuthErrorMessage(error));
+  }
+}

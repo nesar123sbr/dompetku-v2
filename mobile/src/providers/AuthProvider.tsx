@@ -23,6 +23,7 @@ import { sinkronkanUlangNotifikasiSetelahSync } from "@/services/pengingat.servi
 import {
   catatSessionAktifKePengaturanLokal,
   daftarAkunDenganEmail,
+  hapusAkunPenggunaCloud,
   keluarAkunDanKembaliKeModeLokal,
   kirimUlangOtpPendaftaran,
   masukDenganPasswordDanHubungkanDataLokal,
@@ -83,6 +84,9 @@ type AuthContextValue = {
   }>;
 
   signOutUser: (options?: { hapusDataLokal?: boolean }) => Promise<string>;
+  deleteAccountAndData: (options?: {
+    hapusDataLokal?: boolean;
+  }) => Promise<string>;
 
   syncInitialLocalData: () => Promise<SinkronisasiAwalSummary>;
   syncCloudNow: (options?: SyncOptions) => Promise<RingkasanSinkronisasiDuaArah>;
@@ -139,6 +143,7 @@ const AuthContext = createContext<AuthContextValue>({
   },
 
   signOutUser: async () => MODE_PENGGUNAAN.NONE,
+  deleteAccountAndData: async () => MODE_PENGGUNAAN.NONE,
 
   syncInitialLocalData: async () => ({
     profilPengguna: 0,
@@ -470,6 +475,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
     [db, refreshLocalState, session]
   );
 
+  const deleteAccountAndData = useCallback(
+    async (options?: { hapusDataLokal?: boolean }) => {
+      const nextMode = await hapusAkunPenggunaCloud(db, options);
+
+      setSession(null);
+      await refreshLocalState();
+
+      return nextMode;
+    },
+    [db, refreshLocalState]
+  );
+
   const syncInitialLocalData = useCallback(async () => {
     if (!session?.user) {
       throw new Error("Kamu harus masuk ke akun dulu sebelum sinkronisasi.");
@@ -558,6 +575,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       resendSignupOtp,
       signInWithPassword,
       signOutUser,
+      deleteAccountAndData,
       syncInitialLocalData,
       syncCloudNow,
 
@@ -580,6 +598,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     resendSignupOtp,
     signInWithPassword,
     signOutUser,
+    deleteAccountAndData,
     syncInitialLocalData,
     syncCloudNow,
     sendPasswordResetOtp,

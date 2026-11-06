@@ -95,6 +95,7 @@ export default function ProfilTabPage() {
     modePenggunaan,
     session,
     signOutUser,
+    deleteAccountAndData,
     exitGuestMode,
     syncCloudNow,
     user,
@@ -340,6 +341,68 @@ export default function ProfilTabPage() {
           text: "Keluar & hapus data dari HP ini",
           style: "destructive",
           onPress: () => handleSignOut(true),
+        },
+      ]
+    );
+  }
+
+  async function handleDeleteAccount(hapusDataLokal: boolean) {
+    try {
+      setIsProcessing(true);
+      clearFeedback();
+
+      const nextMode = await deleteAccountAndData({ hapusDataLokal });
+
+      if (nextMode === "guest") {
+        router.replace(ROUTES.PROTECTED.DASHBOARD);
+      } else {
+        router.replace(ROUTES.AUTH.SIGN_IN);
+      }
+    } catch (error) {
+      console.log("handleDeleteAccount error:", error);
+      setFeedbackError(
+        error instanceof Error
+          ? error.message
+          : "Gagal menghapus akun dan data."
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
+  function confirmDeleteAccount() {
+    Alert.alert(
+      "Hapus Akun & Data Cloud?",
+      "Akun dan seluruh cadangan data di cloud akan dihapus secara permanen. Tindakan ini tidak dapat dibatalkan.",
+      [
+        {
+          text: "Batal",
+          style: "cancel",
+        },
+        {
+          text: "Lanjutkan",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert(
+              "Konfirmasi Terakhir",
+              "Apakah kamu juga ingin menghapus seluruh data catatan di HP ini, atau tetap menyimpannya di perangkat ini?",
+              [
+                {
+                  text: "Batal",
+                  style: "cancel",
+                },
+                {
+                  text: "Simpan di HP Saja",
+                  onPress: () => handleDeleteAccount(false),
+                },
+                {
+                  text: "Hapus Semua (Cloud & HP)",
+                  style: "destructive",
+                  onPress: () => handleDeleteAccount(true),
+                },
+              ]
+            );
+          },
         },
       ]
     );
@@ -662,13 +725,25 @@ export default function ProfilTabPage() {
             />
           </>
         ) : session ? (
-          <AppButton
-            title={isProcessing ? "Keluar akun..." : "Keluar akun"}
-            variant="danger"
-            style={profilScreenStyles.actionButton}
-            disabled={isProcessing}
-            onPress={confirmSignOut}
-          />
+          <>
+            <AppButton
+              title={isProcessing ? "Keluar akun..." : "Keluar akun"}
+              variant="secondary"
+              style={profilScreenStyles.actionButton}
+              disabled={isProcessing}
+              onPress={confirmSignOut}
+            />
+
+            <AppButton
+              title={
+                isProcessing ? "Menghapus akun..." : "Hapus akun & data"
+              }
+              variant="danger"
+              style={profilScreenStyles.secondaryActionButton}
+              disabled={isProcessing}
+              onPress={confirmDeleteAccount}
+            />
+          </>
         ) : (
           <AppButton
             title="Masuk atau daftar akun"
