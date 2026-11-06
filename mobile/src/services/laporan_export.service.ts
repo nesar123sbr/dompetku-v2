@@ -7,8 +7,10 @@ import * as Sharing from "expo-sharing";
 import { getLaporanBulanan, type LaporanBulanan } from "@/database";
 import { formatRupiah } from "@/utils";
 
-type ExportFormatOptions = {
+export type ExportFormatOptions = {
   bulan?: string;
+  tanggalMulai?: string;
+  tanggalSelesai?: string;
 };
 
 const CSV_SEPARATOR = ";";
@@ -102,6 +104,11 @@ function formatTanggalPendek(value: string) {
 }
 
 function formatPeriodeBulan(value: string) {
+  if (value.includes("_sd_")) {
+    const [mulai, selesai] = value.split("_sd_");
+    return `${formatTanggalIndonesia(mulai)} s.d. ${formatTanggalIndonesia(selesai)}`;
+  }
+
   if (!/^\d{4}-\d{2}$/.test(value)) {
     return value || "Bulan berjalan";
   }
@@ -605,7 +612,7 @@ export async function exportLaporanBulananPdf(
   db: SQLiteDatabase,
   options?: ExportFormatOptions
 ): Promise<string | null> {
-  const laporan = await getLaporanBulanan(db, options?.bulan);
+  const laporan = await getLaporanBulanan(db, options);
   const html = buildHtml(laporan);
 
   const { uri } = await Print.printToFileAsync({
@@ -690,7 +697,7 @@ export async function exportLaporanBulananCsv(
   db: SQLiteDatabase,
   options?: ExportFormatOptions
 ): Promise<string | null> {
-  const laporan = await getLaporanBulanan(db, options?.bulan);
+  const laporan = await getLaporanBulanan(db, options);
   const csv = buildCsv(laporan);
 
   if (Platform.OS !== 'android') {

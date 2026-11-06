@@ -29,15 +29,41 @@ function getBulanIni() {
   return `${year}-${month}`;
 }
 
+export type LaporanFilterOptions = {
+  bulan?: string;
+  tanggalMulai?: string;
+  tanggalSelesai?: string;
+};
+
 export async function getLaporanBulanan(
   db: SQLiteDatabase,
-  bulan = getBulanIni()
+  bulanOrOptions: string | LaporanFilterOptions = getBulanIni()
 ): Promise<LaporanBulanan> {
-  const [year, monthIndex] = bulan.split("-").map(Number);
-  const lastDay = new Date(year, monthIndex, 0).getDate();
+  let tanggalMulai: string;
+  let tanggalSelesai: string;
+  let bulanLabel: string;
 
-  const tanggalMulai = `${bulan}-01`;
-  const tanggalSelesai = `${bulan}-${String(lastDay).padStart(2, "0")}`;
+  if (
+    typeof bulanOrOptions === "object" &&
+    (bulanOrOptions.tanggalMulai || bulanOrOptions.tanggalSelesai)
+  ) {
+    tanggalMulai = bulanOrOptions.tanggalMulai || `${getBulanIni()}-01`;
+    tanggalSelesai = bulanOrOptions.tanggalSelesai || tanggalMulai;
+    bulanLabel =
+      tanggalMulai === tanggalSelesai
+        ? tanggalMulai
+        : `${tanggalMulai}_sd_${tanggalSelesai}`;
+  } else {
+    const bulan =
+      typeof bulanOrOptions === "string"
+        ? bulanOrOptions
+        : bulanOrOptions.bulan || getBulanIni();
+    const [year, monthIndex] = bulan.split("-").map(Number);
+    const lastDay = new Date(year, monthIndex, 0).getDate();
+    tanggalMulai = `${bulan}-01`;
+    tanggalSelesai = `${bulan}-${String(lastDay).padStart(2, "0")}`;
+    bulanLabel = bulan;
+  }
 
   const [pemasukanTotal, pengeluaranTotal, pemasukanRows, pengeluaranRows] =
     await Promise.all([
@@ -105,7 +131,7 @@ export async function getLaporanBulanan(
   );
 
   return {
-    bulan,
+    bulan: bulanLabel,
     totalPemasukan,
     totalPengeluaran,
     saldoBersih: totalPemasukan - totalPengeluaran,

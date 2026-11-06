@@ -365,6 +365,17 @@ export async function nonaktifkanDompetLokal(
       );
     }
 
+    const activeReminder = await txn.getFirstAsync<{ id: string; judul: string }>(
+      `SELECT id, judul FROM pengingat_tagihan WHERE dompet_id = $dompet_id AND status = 'aktif' LIMIT 1`,
+      { $dompet_id: dompetId }
+    );
+
+    if (activeReminder) {
+      throw new Error(
+        `Masih ada pengingat tagihan aktif ("${activeReminder.judul}") yang terhubung ke dompet ini. Ubah atau batalkan pengingat tersebut terlebih dahulu sebelum menghapus dompet.`
+      );
+    }
+
     await txn.runAsync(
       `
         UPDATE dompet

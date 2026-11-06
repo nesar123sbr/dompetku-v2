@@ -108,7 +108,36 @@ export async function getPreviewPengingatDashboard(
   db: SQLiteDatabase,
   limit = 3
 ): Promise<PengingatTagihanListItem[]> {
-  return getDaftarPengingatTagihanAktif(db, limit);
+  const safeLimit = Math.max(1, Math.min(limit, 100));
+
+  const rows = await db.getAllAsync<PengingatTagihanListItem>(
+    `
+      SELECT
+        p.id,
+        p.judul,
+        p.catatan,
+        p.nominal,
+        p.dompet_id,
+        d.nama AS nama_dompet,
+        p.tanggal_jatuh_tempo,
+        p.jam_pengingat,
+        p.status,
+        p.pengulangan,
+        p.lokal_notifikasi_id,
+        p.notifikasi_diaktifkan,
+        p.created_at,
+        p.updated_at
+      FROM pengingat_tagihan p
+      LEFT JOIN dompet d
+        ON d.id = p.dompet_id
+      WHERE p.status = 'aktif'
+        AND date(p.tanggal_jatuh_tempo) <= date('now', 'localtime', '+3 days')
+      ORDER BY date(p.tanggal_jatuh_tempo) ASC, p.jam_pengingat ASC, p.created_at DESC
+      LIMIT ${safeLimit}
+    `
+  );
+
+  return rows ?? [];
 }
 
 export async function getPengingatAktifYangButuhSinkronNotifikasi(

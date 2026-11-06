@@ -236,8 +236,35 @@ export async function getInsightRentangPeriode(
   db: SQLiteDatabase,
   payload: { tanggalMulai: string; tanggalSelesai: string }
 ): Promise<InsightBulanan> {
-  // 🔥 Eksekusi 4 Query Paralel
-  const [pemasukanRow, pengeluaranRow, kelompokRows, kategoriRows] = await Promise.all([
+  const tMulai = new Date(`${payload.tanggalMulai}T00:00:00`);
+  const tSelesai = new Date(`${payload.tanggalSelesai}T00:00:00`);
+  const diffDays = Math.max(
+    1,
+    Math.round(
+      Math.abs(tSelesai.getTime() - tMulai.getTime()) / (1000 * 60 * 60 * 24)
+    ) + 1
+  );
+
+  const prevSelesaiDate = new Date(tMulai.getTime() - 24 * 60 * 60 * 1000);
+  const prevMulaiDate = new Date(
+    prevSelesaiDate.getTime() - (diffDays - 1) * 24 * 60 * 60 * 1000
+  );
+
+  const prevMulaiStr = `${prevMulaiDate.getFullYear()}-${String(
+    prevMulaiDate.getMonth() + 1
+  ).padStart(2, "0")}-${String(prevMulaiDate.getDate()).padStart(2, "0")}`;
+  const prevSelesaiStr = `${prevSelesaiDate.getFullYear()}-${String(
+    prevSelesaiDate.getMonth() + 1
+  ).padStart(2, "0")}-${String(prevSelesaiDate.getDate()).padStart(2, "0")}`;
+
+  const [
+    pemasukanRow,
+    pengeluaranRow,
+    kelompokRows,
+    kategoriRows,
+    prevPemasukanRow,
+    prevPengeluaranRow,
+  ] = await Promise.all([
     db.getFirstAsync<TotalRow>(
       `SELECT COALESCE(SUM(jumlah), 0) AS total
        FROM pemasukan
@@ -273,10 +300,27 @@ export async function getInsightRentangPeriode(
        LIMIT 5`,
       { $mulai: payload.tanggalMulai, $selesai: payload.tanggalSelesai }
     ),
+    db.getFirstAsync<TotalRow>(
+      `SELECT COALESCE(SUM(jumlah), 0) AS total
+       FROM pemasukan
+       WHERE is_deleted = 0
+         AND tanggal_transaksi >= $mulai AND tanggal_transaksi <= $selesai`,
+      { $mulai: prevMulaiStr, $selesai: prevSelesaiStr }
+    ),
+    db.getFirstAsync<TotalRow>(
+      `SELECT COALESCE(SUM(jumlah), 0) AS total
+       FROM pengeluaran
+       WHERE is_deleted = 0
+         AND tanggal_transaksi >= $mulai AND tanggal_transaksi <= $selesai`,
+      { $mulai: prevMulaiStr, $selesai: prevSelesaiStr }
+    ),
   ]);
 
   const totalPemasukan = pemasukanRow?.total ?? 0;
   const totalPengeluaran = pengeluaranRow?.total ?? 0;
+  const totalPemasukanLalu = prevPemasukanRow?.total ?? 0;
+  const totalPengeluaranLalu = prevPengeluaranRow?.total ?? 0;
+
   const arusKasBersih = totalPemasukan - totalPengeluaran;
   const rasio = totalPemasukan > 0 ? totalPengeluaran / totalPemasukan : 0;
 
@@ -288,12 +332,17 @@ export async function getInsightRentangPeriode(
     else status = "rawan";
   }
 
+  const perubahanPengeluaranPersen =
+    totalPengeluaranLalu > 0
+      ? (totalPengeluaran - totalPengeluaranLalu) / totalPengeluaranLalu
+      : null;
+
   return {
     totalPemasukanBulanIni: totalPemasukan,
     totalPengeluaranBulanIni: totalPengeluaran,
-    totalPemasukanBulanLalu: 0, // rentang tidak punya bulan lalu
-    totalPengeluaranBulanLalu: 0,
-    perubahanPengeluaranPersen: null,
+    totalPemasukanBulanLalu: totalPemasukanLalu,
+    totalPengeluaranBulanLalu: totalPengeluaranLalu,
+    perubahanPengeluaranPersen,
     arusKasBersih,
     rasioPengeluaranTerhadapPemasukan: rasio,
     statusKesehatan: status,

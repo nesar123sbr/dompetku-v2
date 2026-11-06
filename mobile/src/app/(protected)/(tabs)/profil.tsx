@@ -495,6 +495,13 @@ export default function ProfilTabPage() {
           disabled={isProcessing}
         />
 
+        <MenuItem
+          icon="shield-checkmark-outline"
+          title="Audit Saldo"
+          description="Periksa dan hitung ulang konsistensi saldo seluruh dompet."
+          onPress={() => goTo(ROUTES.PROTECTED.AUDIT_SALDO)}
+        />
+
         <AppCard style={profilScreenStyles.exportCard}>
           <View style={profilScreenStyles.exportHeader}>
             <View style={profilScreenStyles.menuIconWrap}>

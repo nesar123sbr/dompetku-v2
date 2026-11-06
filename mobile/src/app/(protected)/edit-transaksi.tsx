@@ -198,15 +198,36 @@ export default function EditTransaksiPage() {
 
           if (!active) return;
 
-          setDetail(detailData);
-          setDompetList(dompetData);
-          setKategoriPemasukan(kp);
-          setKategoriPengeluaran(kg);
-
           if (!detailData) {
             setFormError("Transaksi tidak ditemukan.");
             return;
           }
+
+          let finalDompetList = dompetData;
+          if (
+            detailData.dompet_id &&
+            !dompetData.some((d) => d.id === detailData.dompet_id)
+          ) {
+            const dompetNonaktif = await db.getFirstAsync<DompetRow>(
+              `SELECT id, nama, tipe_dompet, saldo_awal, saldo_saat_ini, jenis, is_default, is_aktif, created_at, updated_at
+               FROM dompet WHERE id = $id LIMIT 1`,
+              { $id: detailData.dompet_id }
+            );
+            if (dompetNonaktif) {
+              finalDompetList = [
+                {
+                  ...dompetNonaktif,
+                  nama: `${dompetNonaktif.nama} (nonaktif)`,
+                },
+                ...dompetData,
+              ];
+            }
+          }
+
+          setDetail(detailData);
+          setDompetList(finalDompetList);
+          setKategoriPemasukan(kp);
+          setKategoriPengeluaran(kg);
 
           setSelectedDompetId(detailData.dompet_id);
           setSelectedKategoriId(detailData.kategori_id);

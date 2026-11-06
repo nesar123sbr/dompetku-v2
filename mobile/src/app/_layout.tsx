@@ -1,7 +1,8 @@
 import "@/lib/notifications";
+import * as Notifications from "expo-notifications";
 
 import { useEffect } from "react";
-import { type ErrorBoundaryProps, Stack } from "expo-router";
+import { type ErrorBoundaryProps, Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -91,6 +92,7 @@ const errorStyles = StyleSheet.create({
 
 function RootNavigator() {
   const { isReady } = useAuthSession();
+  const router = useRouter();
 
   useEffect(() => {
     if (isReady) {
@@ -99,6 +101,24 @@ function RootNavigator() {
       });
     }
   }, [isReady]);
+
+  useEffect(() => {
+    const subscription =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        try {
+          const data = response.notification.request.content.data;
+          const targetPath =
+            (data?.pathname as string) || "/(protected)/pengingat";
+          router.push(targetPath as any);
+        } catch (error) {
+          console.log("Navigasi notifikasi response error:", error);
+        }
+      });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [router]);
 
   if (!isReady) {
     return null;

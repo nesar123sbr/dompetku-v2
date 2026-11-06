@@ -22,6 +22,7 @@ export default function ProtectedLayout() {
       <Stack.Screen name="riwayat-transaksi" options={{ headerShown: false }} />
       <Stack.Screen name="edit-transaksi" options={{ headerShown: false }} />
       <Stack.Screen name="anggaran" options={{ headerShown: false }} />
+      <Stack.Screen name="audit-saldo" options={{ headerShown: false }} />
     </Stack>
   );
 }

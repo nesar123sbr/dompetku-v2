@@ -5,8 +5,10 @@ import {
   bayarPengingatTagihanLokal,
   buatPengingatTagihanLokal,
   getPengingatAktifYangButuhSinkronNotifikasi,
+  jadwalkanUlangPengingatBerulang,
   resetSemuaLokalNotifikasiId,
   setLokalNotifikasiIdPengingat,
+  tandaiPengingatSekaliSelesai,
   type BayarPengingatTagihanResult,
   type BuatPengingatTagihanPayload,
   type PengingatPengulangan,
@@ -34,7 +36,7 @@ function addDaysToDateInput(value: string, days: number) {
   return toDateInput(date);
 }
 
-function addMonthsClamped(value: string, months: number) {
+export function addMonthsClamped(value: string, months: number) {
   const [year, month, day] = value.split("-").map(Number);
 
   const firstTargetMonthDate = new Date(year, month - 1 + months, 1);
@@ -55,19 +57,28 @@ function addMonthsClamped(value: string, months: number) {
   return toDateInput(result);
 }
 
-function getNextTanggalJatuhTempo(
+export function getNextTanggalJatuhTempo(
   tanggalJatuhTempo: string,
   pengulangan: PengingatPengulangan
 ) {
-  if (pengulangan === "mingguan") {
-    return addDaysToDateInput(tanggalJatuhTempo, 7);
+  if (pengulangan === "sekali") {
+    return tanggalJatuhTempo;
   }
 
-  if (pengulangan === "bulanan") {
-    return addMonthsClamped(tanggalJatuhTempo, 1);
-  }
+  const todayStr = toDateInput(new Date());
+  let nextDate = tanggalJatuhTempo;
 
-  return tanggalJatuhTempo;
+  do {
+    if (pengulangan === "mingguan") {
+      nextDate = addDaysToDateInput(nextDate, 7);
+    } else if (pengulangan === "bulanan") {
+      nextDate = addMonthsClamped(nextDate, 1);
+    } else {
+      break;
+    }
+  } while (nextDate <= todayStr);
+
+  return nextDate;
 }
 
 
@@ -275,4 +286,63 @@ export async function batalkanPengingatTagihanDenganNotifikasi(
 ) {
   await cancelScheduledNotificationIfExists(item.lokal_notifikasi_id);
   await batalkanPengingatTagihan(db, item.id);
+}
+
+export async function tandaiPengingatTanpaNominalSelesai(
+  db: SQLiteDatabase,
+  item: PengingatTagihanListItem
+) {
+  await cancelScheduledNotificationIfExists(item.lokal_notifikasi_id);
+
+  const shouldRollForward = item.pengulangan !== "sekali";
+  let nextTanggalJatuhTempo: string | null = null;
+  let nextLokalNotifikasiId: string | null = null;
+  let notificationScheduled = false;
+
+  if (shouldRollForward) {
+    nextTanggalJatuhTempo = getNextTanggalJatuhTempo(
+      item.tanggal_jatuh_tempo,
+      item.pengulangan
+    );
+
+    if (Boolean(item.notifikasi_diaktifkan)) {
+      try {
+        const permission = await requestLocalNotificationPermissionsAsync();
+        if (permission.granted && nextTanggalJatuhTempo) {
+          const scheduleResult = await scheduleReminderNotificationAsync({
+            reminderId: item.id,
+            judul: item.judul,
+            nominal: item.nominal,
+            tanggalJatuhTempo: nextTanggalJatuhTempo,
+            jamPengingat: item.jam_pengingat,
+            catatan: item.catatan,
+          });
+
+          if (scheduleResult.notificationId) {
+            nextLokalNotifikasiId = scheduleResult.notificationId;
+            notificationScheduled = true;
+          }
+        }
+      } catch (err) {
+        console.log(
+          "jadwalkan ulang notifikasi reminder tanpa nominal error:",
+          err
+        );
+      }
+    }
+
+    await jadwalkanUlangPengingatBerulang(db, {
+      pengingatId: item.id,
+      nextTanggalJatuhTempo,
+      nextLokalNotifikasiId,
+    });
+  } else {
+    await tandaiPengingatSekaliSelesai(db, item.id);
+  }
+
+  return {
+    rolledForward: shouldRollForward,
+    nextTanggalJatuhTempo,
+    notificationScheduled,
+  };
 }

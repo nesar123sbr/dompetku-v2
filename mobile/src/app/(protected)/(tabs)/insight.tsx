@@ -160,22 +160,22 @@ function getHealthText(status: InsightBulanan["statusKesehatan"]) {
 
 function getPerubahanLabel(value: number | null) {
   if (value === null) {
-    return "Belum ada data bulan sebelumnya untuk dibandingkan.";
+    return "Belum ada data periode sebelumnya untuk dibandingkan.";
   }
 
   if (value > 0) {
     return `Pengeluaran naik ${formatPersen(
       value
-    )} dibanding bulan sebelumnya. Cek kategori terbesar agar tidak kebablasan.`;
+    )} dibanding periode sebelumnya. Cek kategori terbesar agar tidak kebablasan.`;
   }
 
   if (value < 0) {
     return `Bagus, pengeluaran turun ${formatPersen(
       Math.abs(value)
-    )} dibanding bulan sebelumnya. Pertahankan pola ini.`;
+    )} dibanding periode sebelumnya. Pertahankan pola ini.`;
   }
 
-  return "Pengeluaran bulan ini sama seperti bulan sebelumnya.";
+  return "Pengeluaran periode ini sama seperti periode sebelumnya.";
 }
 
 function clampPercent(value: number) {
@@ -282,22 +282,20 @@ export default function InsightTabPage() {
     setExportMessage("Laporan diperbarui mengikuti rentang tanggal baru.");
   }
 
-  // === VALIDASI ANTI-TANGGAL TERBALIK ===
+  // === VALIDASI & AUTO-ADJUST RENTANG TANGGAL ===
   function handleDateChange(type: "start" | "end", val: string) {
-    setErrorMessage(""); // Bersihkan error sebelum validasi
+    setErrorMessage("");
 
     if (type === "start") {
-      if (val > tanggalSelesai) {
-        setErrorMessage("⚠️ Error: Tanggal mulai tidak boleh melebihi tanggal selesai.");
-        return;
-      }
       setTanggalMulai(val);
-    } else {
-      if (val < tanggalMulai) {
-        setErrorMessage("⚠️ Error: Tanggal selesai tidak boleh kurang dari tanggal mulai.");
-        return;
+      if (val > tanggalSelesai) {
+        setTanggalSelesai(val);
       }
+    } else {
       setTanggalSelesai(val);
+      if (val < tanggalMulai) {
+        setTanggalMulai(val);
+      }
     }
     setExportMessage("Laporan diperbarui mengikuti rentang tanggal baru.");
   }
@@ -345,7 +343,11 @@ export default function InsightTabPage() {
       setIsExporting(true);
       setExportMessage("");
 
-      const result = await exportLaporanBulananPdf(db, { bulan: selectedBulan });
+      const result = await exportLaporanBulananPdf(db, {
+        bulan: selectedBulan,
+        tanggalMulai,
+        tanggalSelesai,
+      });
       
       if (result !== null) {
         setExportMessage("Laporan PDF berhasil disimpan.");
@@ -369,7 +371,11 @@ export default function InsightTabPage() {
       setIsExporting(true);
       setExportMessage("");
 
-      const result = await exportLaporanBulananCsv(db, { bulan: selectedBulan });
+      const result = await exportLaporanBulananCsv(db, {
+        bulan: selectedBulan,
+        tanggalMulai,
+        tanggalSelesai,
+      });
       
       if (result !== null) {
         setExportMessage("Laporan CSV berhasil disimpan.");
@@ -515,7 +521,7 @@ export default function InsightTabPage() {
     height
   );
 
-  if (isLoading) {
+  if (isLoading && !hasCashflowData && insight.statusKesehatan === "belum_ada_data") {
     return <AppLoader label="Membuat laporan keuangan..." />;
   }
 
@@ -760,10 +766,10 @@ export default function InsightTabPage() {
 
       <View style={insightScreenStyles.section}>
         <Text style={insightScreenStyles.sectionTitle}>
-          Dibanding bulan sebelumnya
+          Dibanding periode sebelumnya
         </Text>
         <Text style={insightScreenStyles.sectionSubtitle}>
-          Lihat apakah pengeluaran bulan ini naik atau turun.
+          Lihat apakah pengeluaran periode ini naik atau turun dibanding periode sebelumnya.
         </Text>
 
         <AppCard style={insightScreenStyles.wideCard}>
@@ -774,7 +780,7 @@ export default function InsightTabPage() {
           <View style={insightScreenStyles.comparisonGrid}>
             <View style={insightScreenStyles.comparisonItem}>
               <Text style={insightScreenStyles.comparisonLabel}>
-                Bulan dipilih
+                Periode dipilih
               </Text>
               <Text style={insightScreenStyles.comparisonValue}>
                 {formatRupiah(insight.totalPengeluaranBulanIni)}
@@ -783,7 +789,7 @@ export default function InsightTabPage() {
 
             <View style={insightScreenStyles.comparisonItem}>
               <Text style={insightScreenStyles.comparisonLabel}>
-                Bulan sebelumnya
+                Periode sebelumnya
               </Text>
               <Text style={insightScreenStyles.comparisonValue}>
                 {formatRupiah(insight.totalPengeluaranBulanLalu)}
@@ -860,9 +866,9 @@ export default function InsightTabPage() {
       </View>
 
       <View style={insightScreenStyles.section}>
-        <Text style={insightScreenStyles.sectionTitle}>Anggaran bulan ini</Text>
+        <Text style={insightScreenStyles.sectionTitle}>Anggaran bulanan</Text>
         <Text style={insightScreenStyles.sectionSubtitle}>
-          Pantau batas belanja supaya tidak kebablasan.
+          Pantau batas belanja supaya tidak kebablasan. (Catatan: kartu anggaran mengacu pada bulan dari tanggal mulai: {selectedBulan}).
         </Text>
 
         {anggaran.length > 0 ? (

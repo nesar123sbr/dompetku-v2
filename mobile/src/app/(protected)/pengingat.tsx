@@ -41,6 +41,7 @@ import {
   buatPengingatTagihanDenganNotifikasi,
   sinkronkanNotifikasiPengingatAktif,
   tandaiPengingatTagihanSelesai,
+  tandaiPengingatTanpaNominalSelesai,
 } from "@/services";
 import {
   formatLabelPengulangan,
@@ -316,7 +317,7 @@ export default function PengingatPage() {
         );
       } else if (result.skippedReason === "jadwal_notifikasi_gagal") {
         setSuccessMessage(
-          "Pengingat berhasil disimpan, tetapi notifikasi perangkat belum berhasil dijadwalkan. Di emulator ini kadang masih bisa begitu."
+          "Pengingat berhasil disimpan, tetapi notifikasi perangkat belum berhasil dijadwalkan. Pastikan izin notifikasi sudah aktif di pengaturan perangkat."
         );
       } else if (!result.notificationScheduled) {
         setSuccessMessage(
@@ -495,6 +496,39 @@ async function handleKonfirmasiBayarTagihan() {
       error instanceof Error
         ? error.message
         : "Pembayaran tagihan belum berhasil dicatat."
+    );
+  } finally {
+    setProcessingReminderId(null);
+  }
+}
+
+async function handleTandaiSelesaiTanpaNominal(item: PengingatTagihanListItem) {
+  try {
+    setProcessingReminderId(item.id);
+    setFormError("");
+    setSuccessMessage("");
+
+    const result = await tandaiPengingatTanpaNominalSelesai(db, item);
+
+    if (result.rolledForward && result.nextTanggalJatuhTempo) {
+      setSuccessMessage(
+        `Pengingat ditandai selesai dan dijadwalkan ulang ke ${result.nextTanggalJatuhTempo}.`
+      );
+    } else {
+      setSuccessMessage("Pengingat ditandai selesai.");
+    }
+
+    if (paymentItem?.id === item.id) {
+      closePaymentModal();
+    }
+
+    await refreshAllData();
+  } catch (error) {
+    console.log("handleTandaiSelesaiTanpaNominal error:", error);
+    setFormError(
+      error instanceof Error
+        ? error.message
+        : "Gagal menandai pengingat selesai."
     );
   } finally {
     setProcessingReminderId(null);
@@ -868,13 +902,21 @@ async function handleKonfirmasiBayarTagihan() {
                     title={
                       processingReminderId === item.id
                         ? "Memproses..."
+                        : item.nominal <= 0
+                        ? "Tandai selesai"
                         : item.pengulangan === "sekali"
                         ? "Sudah dibayar"
                         : "Bayar & lanjutkan"
                     }
                     variant="secondary"
                     disabled={processingReminderId === item.id}
-                    onPress={() => openPaymentModal(item)}
+                    onPress={() => {
+                      if (item.nominal <= 0) {
+                        handleTandaiSelesaiTanpaNominal(item);
+                      } else {
+                        openPaymentModal(item);
+                      }
+                    }}
                   />
                 </View>
 

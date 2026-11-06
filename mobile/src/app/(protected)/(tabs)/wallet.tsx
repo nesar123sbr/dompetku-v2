@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 
 import {
@@ -22,7 +22,7 @@ import {
   OptionChip,
   TransferHistoryItem,
 } from "@/components";
-import { COLORS } from "@/constants";
+import { COLORS, ROUTES } from "@/constants";
 import {
   getRingkasanDanaDarurat,
   getRingkasanWalletTab,
@@ -361,6 +361,7 @@ function WalletListItem({
 }
 
 export default function WalletTabPage() {
+  const router = useRouter();
   const db = useSQLiteContext();
   const params = useLocalSearchParams<{ action?: string }>();
   const { isGuestMode } = useAuthSession();
@@ -1227,6 +1228,21 @@ export default function WalletTabPage() {
                   disabled={isSubmitting}
                   onPress={handleHapusDompet}
                 />
+
+                <Pressable
+                  style={{ marginTop: 12, alignItems: "center" }}
+                  onPress={() => router.push(ROUTES.PROTECTED.AUDIT_SALDO)}
+                >
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      color: COLORS.brandPrimary,
+                      textDecorationLine: "underline",
+                    }}
+                  >
+                    Periksa & hitung ulang saldo dompet di Audit Saldo →
+                  </Text>
+                </Pressable>
 
                 {!!formError ? (
                   <Text style={walletScreenStyles.errorText}>{formError}</Text>
