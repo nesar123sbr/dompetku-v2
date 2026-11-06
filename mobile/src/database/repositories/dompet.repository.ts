@@ -3,24 +3,6 @@ import type { SQLiteDatabase } from "expo-sqlite";
 import { createLocalId, getNowIso } from "../helpers";
 import type { DompetJenis, DompetRow, DompetTipe } from "../types";
 
-type CountRow = {
-  total: number | null;
-};
-
-type DompetKelolaRow = {
-  id: string;
-  nama: string;
-  is_default: number;
-  is_aktif: number;
-};
-
-type DompetSaldoKelolaRow = {
-  id: string;
-  nama: string;
-  saldo_saat_ini: number;
-  is_aktif: number;
-};
-
 export type KoreksiSaldoDompetRow = {
   id: string;
   dompet_id: string;
@@ -100,6 +82,7 @@ export async function getSemuaDompetAktif(
           END
         ) AS tipe_dompet,
         saldo_saat_ini,
+        COALESCE(saldo_awal, 0) AS saldo_awal,
         is_default,
         is_aktif,
         created_at,
@@ -132,6 +115,7 @@ export async function getDompetDanaDarurat(
         jenis,
         COALESCE(tipe_dompet, 'dana_darurat') AS tipe_dompet,
         saldo_saat_ini,
+        COALESCE(saldo_awal, 0) AS saldo_awal,
         is_default,
         is_aktif,
         created_at,
@@ -178,6 +162,7 @@ export async function tambahDompetLokal(
         jenis,
         tipe_dompet,
         saldo_saat_ini,
+        saldo_awal,
         is_default,
         is_aktif,
         created_at,
@@ -188,6 +173,7 @@ export async function tambahDompetLokal(
         $jenis,
         $tipe_dompet,
         $saldo_saat_ini,
+        $saldo_awal,
         0,
         1,
         $created_at,
@@ -200,6 +186,7 @@ export async function tambahDompetLokal(
       $jenis: jenis,
       $tipe_dompet: payload.tipeDompet,
       $saldo_saat_ini: saldoAwal,
+      $saldo_awal: saldoAwal,
       $created_at: now,
       $updated_at: now,
     }
@@ -400,4 +387,138 @@ export async function nonaktifkanDompetLokal(
       }
     }
   });
+}
+
+export type HasilHitungUlangSaldo = {
+  dompetId: string;
+  nama: string;
+  saldoSebelum: number;
+  saldoBaru: number;
+  selisih: number;
+};
+
+export async function hitungUlangSaldoSemuaDompet(
+  db: SQLiteDatabase
+): Promise<HasilHitungUlangSaldo[]> {
+  const hasil: HasilHitungUlangSaldo[] = [];
+
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const rows = await txn.getAllAsync<{
+      id: string;
+      nama: string;
+      saldo_saat_ini: number;
+      saldo_awal: number;
+      total_pemasukan: number;
+      total_pengeluaran: number;
+      total_transfer_masuk: number;
+      total_transfer_keluar: number;
+      total_koreksi: number;
+    }>(`
+      SELECT
+        d.id,
+        d.nama,
+        d.saldo_saat_ini,
+        COALESCE(d.saldo_awal, 0) AS saldo_awal,
+        COALESCE((SELECT SUM(jumlah) FROM pemasukan WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pemasukan,
+        COALESCE((SELECT SUM(jumlah) FROM pengeluaran WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pengeluaran,
+        COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_tujuan_id = d.id), 0) AS total_transfer_masuk,
+        COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_asal_id = d.id), 0) AS total_transfer_keluar,
+        COALESCE((SELECT SUM(selisih) FROM koreksi_saldo_dompet WHERE dompet_id = d.id), 0) AS total_koreksi
+      FROM dompet d;
+    `);
+
+    for (const r of rows) {
+      const netMutasi =
+        r.total_pemasukan -
+        r.total_pengeluaran +
+        r.total_transfer_masuk -
+        r.total_transfer_keluar +
+        r.total_koreksi;
+      const saldoBaru = Math.round(r.saldo_awal + netMutasi);
+      const selisih = saldoBaru - r.saldo_saat_ini;
+
+      if (selisih !== 0) {
+        await txn.runAsync(
+          "UPDATE dompet SET saldo_saat_ini = $saldo_baru, updated_at = $now WHERE id = $id",
+          {
+            $saldo_baru: saldoBaru,
+            $now: getNowIso(),
+            $id: r.id,
+          }
+        );
+      }
+
+      hasil.push({
+        dompetId: r.id,
+        nama: r.nama,
+        saldoSebelum: r.saldo_saat_ini,
+        saldoBaru,
+        selisih,
+      });
+    }
+  });
+
+  return hasil;
+}
+
+export type IntegritasSaldoItem = {
+  dompetId: string;
+  nama: string;
+  saldoCache: number;
+  saldoDihitung: number;
+  selisih: number;
+};
+
+export type IntegritasSaldoResult = {
+  isValid: boolean;
+  item: IntegritasSaldoItem[];
+};
+
+export async function periksaIntegritasSaldo(
+  db: SQLiteDatabase
+): Promise<IntegritasSaldoResult> {
+  const rows = await db.getAllAsync<{
+    id: string;
+    nama: string;
+    saldo_saat_ini: number;
+    saldo_awal: number;
+    total_pemasukan: number;
+    total_pengeluaran: number;
+    total_transfer_masuk: number;
+    total_transfer_keluar: number;
+    total_koreksi: number;
+  }>(`
+    SELECT
+      d.id,
+      d.nama,
+      d.saldo_saat_ini,
+      COALESCE(d.saldo_awal, 0) AS saldo_awal,
+      COALESCE((SELECT SUM(jumlah) FROM pemasukan WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pemasukan,
+      COALESCE((SELECT SUM(jumlah) FROM pengeluaran WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pengeluaran,
+      COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_tujuan_id = d.id), 0) AS total_transfer_masuk,
+      COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_asal_id = d.id), 0) AS total_transfer_keluar,
+      COALESCE((SELECT SUM(selisih) FROM koreksi_saldo_dompet WHERE dompet_id = d.id), 0) AS total_koreksi
+    FROM dompet d;
+  `);
+
+  const item = (rows ?? []).map((r) => {
+    const netMutasi =
+      r.total_pemasukan -
+      r.total_pengeluaran +
+      r.total_transfer_masuk -
+      r.total_transfer_keluar +
+      r.total_koreksi;
+    const saldoDihitung = Math.round(r.saldo_awal + netMutasi);
+    const selisih = r.saldo_saat_ini - saldoDihitung;
+    return {
+      dompetId: r.id,
+      nama: r.nama,
+      saldoCache: r.saldo_saat_ini,
+      saldoDihitung,
+      selisih,
+    };
+  });
+
+  const isValid = item.every((i) => i.selisih === 0);
+  return { isValid, item };
 }

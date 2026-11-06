@@ -30,6 +30,7 @@ import {
   sinkronisasiCloudSekarang,
   type RingkasanSinkronisasiDuaArah,
   type SinkronisasiAwalSummary,
+  type SyncOptions,
   verifikasiOtpEmailDanHubungkanDataLokal,
   // 👇 1. IMPORT SERVICE LUPA PASSWORD
   kirimOtpResetPassword,
@@ -84,7 +85,7 @@ type AuthContextValue = {
   signOutUser: (options?: { hapusDataLokal?: boolean }) => Promise<string>;
 
   syncInitialLocalData: () => Promise<SinkronisasiAwalSummary>;
-  syncCloudNow: () => Promise<RingkasanSinkronisasiDuaArah>;
+  syncCloudNow: (options?: SyncOptions) => Promise<RingkasanSinkronisasiDuaArah>;
 
   // 👇 2A. TYPE UNTUK FUNCTION BARU
   sendPasswordResetOtp: (email: string) => Promise<void>;
@@ -162,6 +163,7 @@ const AuthContext = createContext<AuthContextValue>({
       pengingatTagihan: 0,
       transferDompet: 0,
       anggaranBulanan: 0,
+      koreksiSaldoDompet: 0,
     },
     pulled: {
       profilPengguna: 0,
@@ -173,6 +175,7 @@ const AuthContext = createContext<AuthContextValue>({
       pengingatTagihan: 0,
       transferDompet: 0,
       anggaranBulanan: 0,
+      koreksiSaldoDompet: 0,
     },
     lastSyncAt: "",
     conflictPolicy: "",
@@ -482,12 +485,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return result;
   }, [db, refreshLocalState, session]);
 
-  const syncCloudNow = useCallback(async () => {
+  const syncCloudNow = useCallback(async (options?: SyncOptions) => {
     if (!session?.user) {
       throw new Error("Kamu harus masuk ke akun dulu sebelum sinkronisasi.");
     }
 
-    const result = await sinkronisasiCloudSekarang(db, session.user);
+    const result = await sinkronisasiCloudSekarang(db, session.user, options);
 
     if (result.pulled.pengingatTagihan > 0) {
       try {

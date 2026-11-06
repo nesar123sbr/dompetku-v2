@@ -36,6 +36,7 @@ export type DompetRow = {
   jenis: DompetJenis;
   tipe_dompet: DompetTipe;
   saldo_saat_ini: number;
+  saldo_awal: number;
   is_default: number;
   is_aktif: number;
   created_at: string;

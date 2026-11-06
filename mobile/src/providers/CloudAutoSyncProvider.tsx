@@ -135,9 +135,15 @@ export default function CloudAutoSyncProvider({
         if (!isMountedRef.current) return; // ABSOLUT
         showStatus("syncing", "Menyinkronkan data...");
 
-        const result = await syncCloudNow();
+        const result = await syncCloudNow({ isManual: false });
         
         if (!isMountedRef.current) return; // ABSOLUT
+
+        if (result.conflictPolicy === "offline_skip") {
+          setSyncStatus("idle");
+          setSyncMessage("");
+          return;
+        }
 
         const pushedTotal = sumRecordValues(result.pushed);
         const pulledTotal = sumRecordValues(result.pulled);

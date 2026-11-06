@@ -212,7 +212,7 @@ export default function ProfilTabPage() {
       setIsProcessing(true);
       clearFeedback();
 
-      const summary = await syncCloudNow();
+      const summary = await syncCloudNow({ isManual: true });
 
       const totalPushed = Object.values(summary.pushed).reduce(
         (total, value) => total + value,

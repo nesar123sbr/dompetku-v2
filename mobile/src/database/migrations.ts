@@ -1,9 +1,12 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 import {
+  DATABASE_VERSION,
   MODE_PENGGUNAAN,
   PENGATURAN_KEY,
 } from "./constants";
 import { getNowIso } from "./helpers";
+
+const EPOCH_ISO = "1970-01-01T00:00:00.000Z";
 
 async function createVersion1Tables(db: SQLiteDatabase) {
   await db.execAsync(`
@@ -410,6 +413,60 @@ async function createVersion9(db: SQLiteDatabase) {
   });
 }
 
+async function createVersion10(db: SQLiteDatabase) {
+  await db.withTransactionAsync(async () => {
+    // 1. Tambah kolom saldo_awal pada dompet jika belum ada
+    const tableInfo = await db.getAllAsync<{ name: string }>(
+      "PRAGMA table_info(dompet)"
+    );
+    const hasSaldoAwal = tableInfo.some((col) => col.name === "saldo_awal");
+    if (!hasSaldoAwal) {
+      await db.execAsync(
+        "ALTER TABLE dompet ADD COLUMN saldo_awal REAL NOT NULL DEFAULT 0;"
+      );
+    }
+
+    // 2. Backfill saldo_awal per dompet:
+    // saldo_awal = saldo_saat_ini - (Σpemasukan - Σpengeluaran + Σtransfer_masuk - Σtransfer_keluar + Σkoreksi_selisih)
+    const dompets = await db.getAllAsync<{
+      id: string;
+      saldo_saat_ini: number;
+      total_pemasukan: number;
+      total_pengeluaran: number;
+      total_transfer_masuk: number;
+      total_transfer_keluar: number;
+      total_koreksi: number;
+    }>(`
+      SELECT
+        d.id,
+        d.saldo_saat_ini,
+        COALESCE((SELECT SUM(jumlah) FROM pemasukan WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pemasukan,
+        COALESCE((SELECT SUM(jumlah) FROM pengeluaran WHERE dompet_id = d.id AND is_deleted = 0), 0) AS total_pengeluaran,
+        COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_tujuan_id = d.id), 0) AS total_transfer_masuk,
+        COALESCE((SELECT SUM(jumlah) FROM transfer_dompet WHERE dompet_asal_id = d.id), 0) AS total_transfer_keluar,
+        COALESCE((SELECT SUM(selisih) FROM koreksi_saldo_dompet WHERE dompet_id = d.id), 0) AS total_koreksi
+      FROM dompet d;
+    `);
+
+    for (const d of dompets) {
+      const netMutasi =
+        d.total_pemasukan -
+        d.total_pengeluaran +
+        d.total_transfer_masuk -
+        d.total_transfer_keluar +
+        d.total_koreksi;
+      const saldoAwal = Math.round(d.saldo_saat_ini - netMutasi);
+      await db.runAsync(
+        "UPDATE dompet SET saldo_awal = $saldo_awal WHERE id = $id",
+        {
+          $saldo_awal: saldoAwal,
+          $id: d.id,
+        }
+      );
+    }
+  });
+}
+
 async function seedDefaultSettings(db: SQLiteDatabase) {
   await db.runAsync(
     `
@@ -432,8 +489,6 @@ async function seedDefaultSettings(db: SQLiteDatabase) {
 }
 
 async function seedDefaultWallets(db: SQLiteDatabase) {
-  const now = getNowIso();
-
   const wallets = [
     {
       $id: "dompet-utama",
@@ -441,10 +496,11 @@ async function seedDefaultWallets(db: SQLiteDatabase) {
       $jenis: "utama",
       $tipe_dompet: "tunai",
       $saldo: 0,
+      $saldo_awal: 0,
       $is_default: 1,
       $is_aktif: 1,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
     {
       $id: "tabungan-utama",
@@ -452,10 +508,11 @@ async function seedDefaultWallets(db: SQLiteDatabase) {
       $jenis: "tabungan",
       $tipe_dompet: "tabungan",
       $saldo: 0,
+      $saldo_awal: 0,
       $is_default: 0,
       $is_aktif: 1,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
     {
       $id: "dana-darurat",
@@ -463,10 +520,11 @@ async function seedDefaultWallets(db: SQLiteDatabase) {
       $jenis: "dana_darurat",
       $tipe_dompet: "dana_darurat",
       $saldo: 0,
+      $saldo_awal: 0,
       $is_default: 0,
       $is_aktif: 1,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
   ] as const;
 
@@ -479,6 +537,7 @@ async function seedDefaultWallets(db: SQLiteDatabase) {
           jenis,
           tipe_dompet,
           saldo_saat_ini,
+          saldo_awal,
           is_default,
           is_aktif,
           created_at,
@@ -489,6 +548,7 @@ async function seedDefaultWallets(db: SQLiteDatabase) {
           $jenis,
           $tipe_dompet,
           $saldo,
+          $saldo_awal,
           $is_default,
           $is_aktif,
           $created_at,
@@ -501,8 +561,6 @@ async function seedDefaultWallets(db: SQLiteDatabase) {
 }
 
 async function seedDefaultKategoriPemasukan(db: SQLiteDatabase) {
-  const now = getNowIso();
-
   const kategori = [
     {
       $id: "kat-pem-gaji",
@@ -510,8 +568,8 @@ async function seedDefaultKategoriPemasukan(db: SQLiteDatabase) {
       $ikon: "cash",
       $warna: "#16A34A",
       $urutan: 1,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
     {
       $id: "kat-pem-penjualan",
@@ -519,8 +577,8 @@ async function seedDefaultKategoriPemasukan(db: SQLiteDatabase) {
       $ikon: "storefront",
       $warna: "#0EA5E9",
       $urutan: 2,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
     {
       $id: "kat-pem-bonus",
@@ -528,8 +586,8 @@ async function seedDefaultKategoriPemasukan(db: SQLiteDatabase) {
       $ikon: "gift",
       $warna: "#6B63FF",
       $urutan: 3,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
     {
       $id: "kat-pem-lainnya",
@@ -537,8 +595,8 @@ async function seedDefaultKategoriPemasukan(db: SQLiteDatabase) {
       $ikon: "ellipsis-horizontal",
       $warna: "#8A91A8",
       $urutan: 99,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
   ] as const;
 
@@ -569,8 +627,6 @@ async function seedDefaultKategoriPemasukan(db: SQLiteDatabase) {
 }
 
 async function seedDefaultKategoriPengeluaran(db: SQLiteDatabase) {
-  const now = getNowIso();
-
   const kategori = [
     {
       $id: "kat-peng-makan",
@@ -579,8 +635,8 @@ async function seedDefaultKategoriPengeluaran(db: SQLiteDatabase) {
       $ikon: "restaurant",
       $warna: "#F97316",
       $urutan: 1,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
     {
       $id: "kat-peng-belanja-harian",
@@ -589,8 +645,8 @@ async function seedDefaultKategoriPengeluaran(db: SQLiteDatabase) {
       $ikon: "basket",
       $warna: "#F59E0B",
       $urutan: 2,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
     {
       $id: "kat-peng-transportasi",
@@ -599,8 +655,8 @@ async function seedDefaultKategoriPengeluaran(db: SQLiteDatabase) {
       $ikon: "bus",
       $warna: "#0EA5E9",
       $urutan: 3,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
     {
       $id: "kat-peng-tagihan",
@@ -609,8 +665,8 @@ async function seedDefaultKategoriPengeluaran(db: SQLiteDatabase) {
       $ikon: "receipt",
       $warna: "#DC2626",
       $urutan: 4,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
     {
       $id: "kat-peng-stok-warung",
@@ -619,8 +675,8 @@ async function seedDefaultKategoriPengeluaran(db: SQLiteDatabase) {
       $ikon: "cube",
       $warna: "#16A34A",
       $urutan: 5,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
     {
       $id: "kat-peng-hiburan",
@@ -629,8 +685,8 @@ async function seedDefaultKategoriPengeluaran(db: SQLiteDatabase) {
       $ikon: "game-controller",
       $warna: "#6B63FF",
       $urutan: 6,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
     {
       $id: "kat-peng-lainnya",
@@ -639,8 +695,8 @@ async function seedDefaultKategoriPengeluaran(db: SQLiteDatabase) {
       $ikon: "ellipsis-horizontal",
       $warna: "#8A91A8",
       $urutan: 99,
-      $created_at: now,
-      $updated_at: now,
+      $created_at: EPOCH_ISO,
+      $updated_at: EPOCH_ISO,
     },
   ] as const;
 
@@ -733,11 +789,18 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   if (nextVersion < 9) {
     await createVersion9(db);
     nextVersion = 9;
+    await db.execAsync("PRAGMA user_version = 9");
+  }
+
+  if (nextVersion < 10) {
+    await createVersion10(db);
+    nextVersion = 10;
+    await db.execAsync("PRAGMA user_version = 10");
   }
 
   await seedDefaultData(db);
 
   if (nextVersion !== currentVersion) {
-    await db.execAsync(`PRAGMA user_version = ${nextVersion}`);
+    await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
   }
 }
