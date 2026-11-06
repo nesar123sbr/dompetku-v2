@@ -108,3 +108,31 @@ ReactNativeJS: 'Global ErrorBoundary caught error:', { [Error: Error code 1: no 
 ### 5.3 Modernisasi Navigasi & Pembersihan Variabel Tak Terpakai
 - `mobile/src/app/(protected)/riwayat-transaksi.tsx`: Mengganti navigasi string template `as Href` pada edit transaksi dengan sintaks rute objek resmi Expo Router (`pathname` & `params`).
 - Menghapus konstanta `EDIT_TRANSAKSI_HREF` yang tidak lagi terpakai.
+
+---
+
+## 6. Rincian Perbaikan Fase 4 (Migrasi Supabase & Hardening Keamanan Cloud)
+
+### 6.1 Pembaruan Skema & RPC `sync_bundle` (`20261106090000_000005_sync_core_hardening.sql`)
+- **Pembersihan Indeks Duplikat**: Menghapus indeks duplikat FK warisan skema awal (`idx_pemasukan_fk_dompet`, `idx_pengeluaran_fk_dompet`, `idx_transfer_dompet_fk_asal`, dll.) yang identik dengan indeks pada patch keamanan 000003.
+- **Trigger `server_updated_at`**: Menambahkan kolom `server_updated_at timestamptz not null default clock_timestamp()` beserta trigger `BEFORE INSERT OR UPDATE` pada seluruh 9 tabel sinkronisasi agar penanda waktu pembaruan server konsisten dan kebal terhadap perbedaan jam klien (*client clock drift*).
+- **Kolom `saldo_awal` pada Dompet**: Mendukung pencatatan dan rekonsiliasi saldo turunan cloud.
+- **Pembaruan RPC `sync_bundle`**:
+  - Validasi ketat format payload JSONB.
+  - Dukungan tabel `koreksi_saldo_dompet` secara append-only (`ON CONFLICT (pengguna_id, id_lokal) DO NOTHING`).
+  - Pencegahan pembaruan mundur (*backdated timestamp attack*) dengan fungsi `LEAST(EXCLUDED.updated_at, timezone('utc', now()))`.
+  - Pembatasan hak eksekusi: `REVOKE EXECUTE ... FROM public, anon;` dan `GRANT EXECUTE ... TO authenticated;`.
+
+### 6.2 Penghapusan Akun Play Store & Data Berjenjang (`20261106100000_000006_delete_account_rpc.sql`)
+- Membuat fungsi database RPC `public.hapus_semua_data_pengguna(target_user_id UUID)` dengan mode `SECURITY DEFINER`.
+- Menghapus data secara berjenjang mengikuti urutan aman Foreign Key (*transaksi → transfer → koreksi → pengingat → anggaran → kategori → dompet → profil*) untuk mencegah pelanggaran `ON DELETE RESTRICT` saat user dihapus dari `auth.users`.
+- Memberikan akses fungsi hanya kepada `authenticated` dan `service_role`.
+
+### 6.3 Standar Keamanan Otentikasi (`supabase/config.toml`)
+- Mengubah `minimum_password_length` dari `6` menjadi `8` karakter sesuai standar keamanan Google Play Store dan OWASP.
+
+### 6.4 Edge Function `delete-account` (`supabase/functions/delete-account/index.ts`)
+- Menerapkan fungsi Deno/Supabase Edge Function untuk memproses permintaan hapus akun secara mandiri:
+  1. Memvalidasi token JWT pengguna aktif.
+  2. Memanggil RPC `hapus_semua_data_pengguna` untuk membersihkan basis data.
+  3. Memanggil `auth.admin.deleteUser(user.id)` menggunakan service role key.
