@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Keyboard, Text, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
@@ -53,6 +53,7 @@ export default function EditTransaksiPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
 
   const [detail, setDetail] = useState<DetailTransaksiEdit | null>(null);
   const [dompetList, setDompetList] = useState<DompetRow[]>([]);
@@ -283,6 +284,9 @@ export default function EditTransaksiPage() {
       return;
     }
 
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+
     try {
       setIsSubmitting(true);
       setFormError("");
@@ -315,6 +319,7 @@ export default function EditTransaksiPage() {
           : "Transaksi belum berhasil diperbarui."
       );
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   }

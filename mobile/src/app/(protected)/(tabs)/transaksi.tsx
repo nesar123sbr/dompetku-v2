@@ -112,6 +112,7 @@ export default function TransaksiTabPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
 
   const [jenisTransaksi, setJenisTransaksi] =
     useState<JenisTransaksi>("pengeluaran");
@@ -593,6 +594,9 @@ export default function TransaksiTabPage() {
   async function handleSubmit() {
     Keyboard.dismiss();
 
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+
     try {
       setFormError("");
       setSuccessMessage("");
@@ -696,6 +700,7 @@ export default function TransaksiTabPage() {
           : "Gagal menyimpan transaksi. Coba lagi."
       );
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   }

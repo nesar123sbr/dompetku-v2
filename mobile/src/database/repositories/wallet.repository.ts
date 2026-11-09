@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
-import { createLocalId, getNowIso } from "../helpers";
+import { assertNominalDalamBatas, createLocalId, getNowIso } from "../helpers";
 import type {
   DompetRow,
   RingkasanDanaDarurat,
@@ -158,6 +158,7 @@ export async function transferAntarDompetLokal(
   if (payload.jumlah <= 0) {
     throw new Error("Jumlah transfer harus lebih dari 0.");
   }
+  assertNominalDalamBatas(payload.jumlah, "Jumlah transfer");
 
   if (payload.dompetSumberId === payload.dompetTujuanId) {
     throw new Error("Dompet sumber dan tujuan tidak boleh sama.");

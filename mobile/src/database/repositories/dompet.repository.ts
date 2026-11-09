@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
-import { createLocalId, getNowIso } from "../helpers";
+import { assertNominalDalamBatas, createLocalId, getNowIso } from "../helpers";
 import type { DompetJenis, DompetRow, DompetTipe } from "../types";
 
 export type KoreksiSaldoDompetRow = {
@@ -122,6 +122,7 @@ export async function tambahDompetLokal(
   if (!Number.isFinite(saldoAwal) || saldoAwal < 0) {
     throw new Error("Saldo awal dompet tidak valid.");
   }
+  assertNominalDalamBatas(saldoAwal, "Saldo awal");
 
   const now = getNowIso();
   const id = createLocalId("dompet");
@@ -179,6 +180,7 @@ export async function ubahSaldoDompetLokal(
   if (!Number.isFinite(payload.saldoBaru) || payload.saldoBaru < 0) {
     throw new Error("Saldo baru dompet tidak valid.");
   }
+  assertNominalDalamBatas(payload.saldoBaru, "Saldo baru");
 
   const now = getNowIso();
   let auditId = "";

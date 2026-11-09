@@ -1,5 +1,6 @@
 export function sanitizeNumericInput(value: string) {
-  return value.replace(/[^\d]/g, "");
+  // maksimal 12 digit = MAX_NOMINAL di database/helpers.ts
+  return value.replace(/[^\d]/g, "").slice(0, 12);
 }
 
 export function parseNumericInput(value: string) {

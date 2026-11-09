@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
-import { createLocalId, getNowIso } from "../helpers";
+import { assertNominalDalamBatas, createLocalId, getNowIso } from "../helpers";
 import type {
   BuatPengingatTagihanPayload,
   PengingatTagihanListItem,
@@ -183,6 +183,7 @@ export async function buatPengingatTagihanLokal(
   if (payload.nominal < 0) {
     throw new Error("Nominal tagihan tidak boleh negatif.");
   }
+  assertNominalDalamBatas(payload.nominal, "Nominal tagihan");
 
   const pengingatId = createLocalId("tagihan");
   const now = getNowIso();

@@ -389,6 +389,7 @@ export default function WalletTabPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
   const [showSaldo, setShowSaldo] = useState(true);
   const [activePanel, setActivePanel] = useState<ActiveWalletPanel>("none");
 
@@ -797,6 +798,9 @@ export default function WalletTabPage() {
   }, [isSumberDanaDarurat, konfirmasiGunakanDanaDarurat]);
 
   async function handleTambahDompet() {
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+
     try {
       clearMessages();
 
@@ -835,12 +839,16 @@ export default function WalletTabPage() {
           : "Dompet baru belum berhasil disimpan."
       );
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   }
 
   async function handleSubmitTransfer() {
     Keyboard.dismiss();
+
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
 
     try {
       clearMessages();
@@ -917,6 +925,7 @@ export default function WalletTabPage() {
           : "Gagal menyimpan pindah dompet. Coba lagi."
       );
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   }

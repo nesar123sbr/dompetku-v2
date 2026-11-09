@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
-import { createLocalId, getNowIso } from "../helpers";
+import { assertNominalDalamBatas, createLocalId, getNowIso } from "../helpers";
 import type {
   DetailTransaksiEdit,
   DompetRow,
@@ -104,6 +104,8 @@ function validateTransaksiInput(payload: {
       throw new Error("Format tanggal transaksi harus YYYY-MM-DD.");
     }
   }
+
+  assertNominalDalamBatas(payload.jumlah, "Jumlah transaksi");
 }
 
 export async function tambahPemasukanLokal(

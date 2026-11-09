@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Keyboard, Modal, Pressable, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
@@ -122,6 +122,7 @@ export default function PengingatPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
   const [isSyncingPermission, setIsSyncingPermission] = useState(false);
   const [processingReminderId, setProcessingReminderId] = useState<string | null>(
     null
@@ -273,6 +274,9 @@ export default function PengingatPage() {
   async function handleSubmitPengingat() {
     Keyboard.dismiss();
 
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+
     try {
       setFormError("");
       setSuccessMessage("");
@@ -337,6 +341,7 @@ export default function PengingatPage() {
       console.log("handleSubmitPengingat error:", error);
       setFormError("Pengingat belum berhasil disimpan. Coba lagi.");
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -441,6 +446,9 @@ async function executeKonfirmasiBayarTagihan() {
     return;
   }
 
+  if (submitLockRef.current) return;
+  submitLockRef.current = true;
+
   try {
     setProcessingReminderId(paymentItem.id);
 
@@ -480,6 +488,7 @@ async function executeKonfirmasiBayarTagihan() {
         : "Pembayaran tagihan belum berhasil dicatat."
     );
   } finally {
+    submitLockRef.current = false;
     setProcessingReminderId(null);
   }
 }

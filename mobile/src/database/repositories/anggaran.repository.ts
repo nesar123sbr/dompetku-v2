@@ -1,5 +1,5 @@
 import type { SQLiteDatabase } from "expo-sqlite";
-import { getNowIso } from "../helpers";
+import { assertNominalDalamBatas, getNowIso } from "../helpers";
 import type { RingkasanAnggaranBulananItem } from "../types";
 
 type AnggaranRow = {
@@ -82,6 +82,7 @@ export async function simpanAnggaranBulanan(
   if (payload.batasNominal <= 0) {
     throw new Error("Batas anggaran harus lebih dari 0.");
   }
+  assertNominalDalamBatas(payload.batasNominal, "Batas anggaran");
 
   const now = getNowIso();
   const bulan = payload.bulan ?? getBulanIni();
@@ -182,6 +183,7 @@ export async function ubahAnggaranBulananLokal(
   if (payload.batasNominal <= 0) {
     throw new Error("Batas anggaran harus lebih dari 0.");
   }
+  assertNominalDalamBatas(payload.batasNominal, "Batas anggaran");
 
   const anggaran = await db.getFirstAsync<{
     id: string;

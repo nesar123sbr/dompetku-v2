@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Alert, Keyboard, Pressable, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
@@ -78,6 +78,7 @@ export default function AnggaranPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
 
   const [kategoriList, setKategoriList] = useState<KategoriPengeluaranRow[]>(
     []
@@ -192,6 +193,9 @@ export default function AnggaranPage() {
   async function handleSimpanAnggaran() {
     Keyboard.dismiss();
 
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+
     try {
       setFormError("");
 
@@ -244,6 +248,7 @@ export default function AnggaranPage() {
           : "Anggaran belum berhasil disimpan."
       );
     } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   }
