@@ -1,8 +1,8 @@
 import "@/lib/notifications";
 import * as Notifications from "expo-notifications";
 
-import { useEffect } from "react";
-import { type ErrorBoundaryProps, Stack, useRouter } from "expo-router";
+import { useEffect, useRef } from "react";
+import { type ErrorBoundaryProps, type Href, Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import {
@@ -191,8 +191,10 @@ const errorStyles = StyleSheet.create({
 });
 
 function RootNavigator() {
-  const { isReady } = useAuthSession();
+  const { isReady, session, isGuestMode } = useAuthSession();
   const router = useRouter();
+  const lastNotificationResponse = Notifications.useLastNotificationResponse();
+  const lastHandledNotificationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isReady) {
@@ -202,23 +204,30 @@ function RootNavigator() {
     }
   }, [isReady]);
 
+  // Handle tap notifikasi saat aplikasi dibuka / resume
   useEffect(() => {
-    const subscription =
-      Notifications.addNotificationResponseReceivedListener((response) => {
-        try {
-          const data = response.notification.request.content.data;
-          const targetPath =
-            (data?.pathname as string) || "/(protected)/pengingat";
-          router.push(targetPath as any);
-        } catch (error) {
-          console.log("Navigasi notifikasi response error:", error);
-        }
-      });
+    if (!isReady || (!session && !isGuestMode)) {
+      return;
+    }
 
-    return () => {
-      subscription.remove();
-    };
-  }, [router]);
+    if (lastNotificationResponse) {
+      const notificationId =
+        lastNotificationResponse.notification.request.identifier;
+      if (lastHandledNotificationIdRef.current === notificationId) {
+        return;
+      }
+      lastHandledNotificationIdRef.current = notificationId;
+
+      try {
+        const data = lastNotificationResponse.notification.request.content.data;
+        if (typeof data?.pathname === "string" && data.pathname.trim().length > 0) {
+          router.push(data.pathname as Href);
+        }
+      } catch (error) {
+        console.log("Navigasi lastNotificationResponse error:", error);
+      }
+    }
+  }, [isReady, session, isGuestMode, lastNotificationResponse, router]);
 
   if (!isReady) {
     return null;

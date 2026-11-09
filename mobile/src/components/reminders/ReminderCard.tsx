@@ -46,11 +46,22 @@ export default function ReminderCard({
 }: ReminderCardProps) {
   const dueBadge = getJatuhTempoBadge(item.tanggal_jatuh_tempo);
 
-  const notificationBadge = item.notifikasi_diaktifkan
-    ? item.lokal_notifikasi_id
-      ? { label: "Notifikasi aktif", variant: "success" as const }
-      : { label: "Notif belum terjadwal", variant: "warning" as const }
-    : { label: "Notif mati", variant: "neutral" as const };
+  const notificationBadge = (() => {
+    if (!item.notifikasi_diaktifkan) {
+      return { label: "Notif mati", variant: "neutral" as const };
+    }
+    if (item.lokal_notifikasi_id) {
+      return { label: "Notifikasi aktif", variant: "success" as const };
+    }
+    const waktu = new Date(
+      `${item.tanggal_jatuh_tempo}T${item.jam_pengingat.slice(0, 5)}:00`
+    );
+    // eslint-disable-next-line react-hooks/purity
+    if (!Number.isNaN(waktu.getTime()) && waktu.getTime() <= Date.now()) {
+      return { label: "Notif sudah lewat", variant: "neutral" as const };
+    }
+    return { label: "Notif belum terjadwal", variant: "warning" as const };
+  })();
 
   return (
     <AppCard style={reminderCardStyles.card}>

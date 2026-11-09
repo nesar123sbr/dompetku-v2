@@ -17,6 +17,7 @@ import {
 import {
   batalkanSemuaNotifikasiTerjadwal,
   cancelScheduledNotificationIfExists,
+  getAllScheduledNotificationsAsync,
   getLocalNotificationPermissionSnapshotAsync,
   requestLocalNotificationPermissionsAsync,
   scheduleReminderNotificationAsync,
@@ -203,6 +204,94 @@ export async function sinkronkanNotifikasiPengingatAktif(
   db: SQLiteDatabase
 ) {
   return sinkronkanNotifikasiInternal(db, true);
+}
+
+export async function rekonsiliasiNotifikasiPengingat(
+  db: SQLiteDatabase
+): Promise<void> {
+  try {
+    const scheduledNotifications = await getAllScheduledNotificationsAsync();
+    const scheduledIdSet = new Set(
+      scheduledNotifications.map((item) => item.identifier)
+    );
+
+    // 1. Pengingat berstatus bukan 'aktif' yang masih memiliki lokal_notifikasi_id
+    const nonAktifDenganNotif = await db.getAllAsync<{
+      id: string;
+      lokal_notifikasi_id: string | null;
+    }>(
+      `SELECT id, lokal_notifikasi_id FROM pengingat_tagihan WHERE status != 'aktif' AND lokal_notifikasi_id IS NOT NULL`
+    );
+
+    for (const item of nonAktifDenganNotif) {
+      if (item.lokal_notifikasi_id) {
+        await cancelScheduledNotificationIfExists(item.lokal_notifikasi_id);
+        await setLokalNotifikasiIdPengingat(db, item.id, null);
+      }
+    }
+
+    // 2. Pengingat aktif: bila ID terjadwal tidak valid atau belum terjadwal, rekonsiliasikan
+    const pengingatAktif = await db.getAllAsync<PengingatTagihanListItem>(
+      `SELECT
+         p.id,
+         p.judul,
+         p.nominal,
+         p.tanggal_jatuh_tempo,
+         p.jam_pengingat,
+         p.pengulangan,
+         p.notifikasi_diaktifkan,
+         p.lokal_notifikasi_id,
+         p.catatan,
+         p.status,
+         p.dompet_id
+       FROM pengingat_tagihan p
+       WHERE p.status = 'aktif'`
+    );
+
+    const permission = await getLocalNotificationPermissionSnapshotAsync();
+
+    for (const item of pengingatAktif) {
+      const hasMissingId =
+        Boolean(item.lokal_notifikasi_id) &&
+        !scheduledIdSet.has(item.lokal_notifikasi_id!);
+
+      if (hasMissingId) {
+        await setLokalNotifikasiIdPengingat(db, item.id, null);
+      }
+
+      if (
+        (hasMissingId || !item.lokal_notifikasi_id) &&
+        permission.granted &&
+        Boolean(item.notifikasi_diaktifkan)
+      ) {
+        try {
+          const scheduleResult = await scheduleReminderNotificationAsync({
+            reminderId: item.id,
+            judul: item.judul,
+            nominal: item.nominal,
+            tanggalJatuhTempo: item.tanggal_jatuh_tempo,
+            jamPengingat: item.jam_pengingat,
+            catatan: item.catatan,
+          });
+
+          if (scheduleResult.notificationId) {
+            await setLokalNotifikasiIdPengingat(
+              db,
+              item.id,
+              scheduleResult.notificationId
+            );
+          }
+        } catch (scheduleErr) {
+          console.log(
+            "rekonsiliasiNotifikasiPengingat reschedule error:",
+            scheduleErr
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.log("rekonsiliasiNotifikasiPengingat general error:", error);
+  }
 }
 
 export async function sinkronkanUlangNotifikasiSetelahSync(

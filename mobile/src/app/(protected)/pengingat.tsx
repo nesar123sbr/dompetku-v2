@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Keyboard, Modal, Pressable, Text, View } from "react-native";
+import { Alert, Keyboard, Modal, Pressable, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -39,6 +39,7 @@ import { useAuthSession } from "@/providers/AuthProvider";
 import {
   batalkanPengingatTagihanDenganNotifikasi,
   buatPengingatTagihanDenganNotifikasi,
+  rekonsiliasiNotifikasiPengingat,
   sinkronkanNotifikasiPengingatAktif,
   tandaiPengingatTagihanSelesai,
   tandaiPengingatTanpaNominalSelesai,
@@ -217,6 +218,7 @@ export default function PengingatPage() {
 
           if (!isActive) return;
           applyLoadedData(data);
+          void rekonsiliasiNotifikasiPengingat(db);
         } catch (error) {
           console.log("loadPengingatData error:", error);
         } finally {
@@ -230,7 +232,7 @@ export default function PengingatPage() {
       return () => {
         isActive = false;
       };
-    }, [fetchData])
+    }, [db, fetchData])
   );
 
   useEffect(() => {
@@ -345,6 +347,7 @@ export default function PengingatPage() {
       setSuccessMessage("");
       setIsSyncingPermission(true);
 
+      await rekonsiliasiNotifikasiPengingat(db);
       const result = await sinkronkanNotifikasiPengingatAktif(db);
       const permissionRefreshed =
         await getLocalNotificationPermissionSnapshotAsync();
@@ -433,33 +436,12 @@ function closePaymentModal() {
   setPaymentError("");
 }
 
-async function handleKonfirmasiBayarTagihan() {
-  if (!paymentItem) {
+async function executeKonfirmasiBayarTagihan() {
+  if (!paymentItem || !selectedPaymentDompet) {
     return;
   }
 
   try {
-    setPaymentError("");
-    setFormError("");
-    setSuccessMessage("");
-
-    if (paymentItem.nominal <= 0) {
-      setPaymentError("Nominal tagihan harus lebih dari 0 agar bisa dibayar.");
-      return;
-    }
-
-    if (!selectedPaymentDompet) {
-      setPaymentError("Pilih dompet pembayaran terlebih dahulu.");
-      return;
-    }
-
-    if (paymentItem.nominal > selectedPaymentDompet.saldo_saat_ini) {
-      setPaymentError(
-        "Saldo tidak mencukupi. Silakan pilih dompet lain atau lakukan transfer antar dompet terlebih dahulu."
-      );
-      return;
-    }
-
     setProcessingReminderId(paymentItem.id);
 
     const result = await tandaiPengingatTagihanSelesai(
@@ -500,6 +482,74 @@ async function handleKonfirmasiBayarTagihan() {
   } finally {
     setProcessingReminderId(null);
   }
+}
+
+function handleKonfirmasiBayarTagihan() {
+  if (!paymentItem) {
+    return;
+  }
+
+  setPaymentError("");
+  setFormError("");
+  setSuccessMessage("");
+
+  if (paymentItem.nominal <= 0) {
+    setPaymentError("Nominal tagihan harus lebih dari 0 agar bisa dibayar.");
+    return;
+  }
+
+  if (!selectedPaymentDompet) {
+    setPaymentError("Pilih dompet pembayaran terlebih dahulu.");
+    return;
+  }
+
+  if (paymentItem.nominal > selectedPaymentDompet.saldo_saat_ini) {
+    setPaymentError(
+      "Saldo tidak mencukupi. Silakan pilih dompet lain atau lakukan transfer antar dompet terlebih dahulu."
+    );
+    return;
+  }
+
+  const isDanaDarurat =
+    selectedPaymentDompet.jenis === "dana_darurat" ||
+    (selectedPaymentDompet as unknown as { tipe_dompet?: string }).tipe_dompet ===
+      "dana_darurat";
+
+  if (isDanaDarurat) {
+    Alert.alert(
+      "Gunakan Dana Darurat?",
+      `Dompet "${selectedPaymentDompet.nama}" berjenis Dana Darurat. Apakah kamu yakin ingin membayar tagihan ini menggunakan dana darurat?`,
+      [
+        { text: "Batal", style: "cancel" },
+        {
+          text: "Ya, Gunakan",
+          style: "destructive",
+          onPress: () => {
+            void executeKonfirmasiBayarTagihan();
+          },
+        },
+      ]
+    );
+    return;
+  }
+
+  void executeKonfirmasiBayarTagihan();
+}
+
+function promptTandaiSelesaiTanpaNominal(item: PengingatTagihanListItem) {
+  Alert.alert(
+    "Tandai Selesai",
+    `Apakah kamu yakin ingin menandai pengingat "${item.judul}" selesai tanpa mencatat pengeluaran?`,
+    [
+      { text: "Batal", style: "cancel" },
+      {
+        text: "Ya, Selesaikan",
+        onPress: () => {
+          void handleTandaiSelesaiTanpaNominal(item);
+        },
+      },
+    ]
+  );
 }
 
 async function handleTandaiSelesaiTanpaNominal(item: PengingatTagihanListItem) {
@@ -912,7 +962,7 @@ async function handleTandaiSelesaiTanpaNominal(item: PengingatTagihanListItem) {
                     disabled={processingReminderId === item.id}
                     onPress={() => {
                       if (item.nominal <= 0) {
-                        handleTandaiSelesaiTanpaNominal(item);
+                        promptTandaiSelesaiTanpaNominal(item);
                       } else {
                         openPaymentModal(item);
                       }

@@ -88,71 +88,78 @@ export async function simpanAnggaranBulanan(
   const kategoriId = payload.kategoriId ? payload.kategoriId.trim() : null;
   const ambang = payload.ambangPeringatanPersen ?? 0.8;
   const targetId = buatIdAnggaranDeterministik(bulan, kategoriId);
-  const kategoriKey = kategoriId ?? "__semua__";
 
   await db.withExclusiveTransactionAsync(async (txn) => {
-    // Nonaktifkan baris aktif lain dengan bulan dan kategori yang sama jika ID berbeda
-    await txn.runAsync(
+    const existing = await txn.getFirstAsync<{ id: string }>(
       `
-        UPDATE anggaran_bulanan
-        SET is_aktif = 0,
-            updated_at = $updated_at
+        SELECT id
+        FROM anggaran_bulanan
         WHERE bulan = $bulan
-          AND COALESCE(kategori_id, '__semua__') = $kategori_key
-          AND id != $id
-          AND is_aktif = 1
+          AND kategori_id IS $kategori_id
+        LIMIT 1
       `,
       {
         $bulan: bulan,
-        $kategori_key: kategoriKey,
-        $id: targetId,
-        $updated_at: now,
+        $kategori_id: kategoriId,
       }
     );
 
-    // Upsert berbasis ID deterministik
-    await txn.runAsync(
-      `
-        INSERT INTO anggaran_bulanan (
-          id,
-          bulan,
-          nama,
-          kategori_id,
-          batas_nominal,
-          ambang_peringatan_persen,
-          is_aktif,
-          created_at,
-          updated_at
-        ) VALUES (
-          $id,
-          $bulan,
-          $nama,
-          $kategori_id,
-          $batas_nominal,
-          $ambang,
-          1,
-          $created_at,
-          $updated_at
-        )
-        ON CONFLICT(id) DO UPDATE SET
-          nama = excluded.nama,
-          kategori_id = excluded.kategori_id,
-          batas_nominal = excluded.batas_nominal,
-          ambang_peringatan_persen = excluded.ambang_peringatan_persen,
-          is_aktif = 1,
-          updated_at = excluded.updated_at
-      `,
-      {
-        $id: targetId,
-        $bulan: bulan,
-        $nama: nama,
-        $kategori_id: kategoriId,
-        $batas_nominal: payload.batasNominal,
-        $ambang: ambang,
-        $created_at: now,
-        $updated_at: now,
-      }
-    );
+    if (existing) {
+      await txn.runAsync(
+        `
+          UPDATE anggaran_bulanan
+          SET nama = $nama,
+              batas_nominal = $batas_nominal,
+              ambang_peringatan_persen = $ambang,
+              is_aktif = 1,
+              updated_at = $updated_at
+          WHERE id = $id
+        `,
+        {
+          $id: existing.id,
+          $nama: nama,
+          $batas_nominal: payload.batasNominal,
+          $ambang: ambang,
+          $updated_at: now,
+        }
+      );
+    } else {
+      await txn.runAsync(
+        `
+          INSERT INTO anggaran_bulanan (
+            id,
+            bulan,
+            nama,
+            kategori_id,
+            batas_nominal,
+            ambang_peringatan_persen,
+            is_aktif,
+            created_at,
+            updated_at
+          ) VALUES (
+            $id,
+            $bulan,
+            $nama,
+            $kategori_id,
+            $batas_nominal,
+            $ambang,
+            1,
+            $created_at,
+            $updated_at
+          )
+        `,
+        {
+          $id: targetId,
+          $bulan: bulan,
+          $nama: nama,
+          $kategori_id: kategoriId,
+          $batas_nominal: payload.batasNominal,
+          $ambang: ambang,
+          $created_at: now,
+          $updated_at: now,
+        }
+      );
+    }
   });
 }
 
@@ -198,91 +205,50 @@ export async function ubahAnggaranBulananLokal(
   }
 
   const targetKategoriId = payload.kategoriId ? payload.kategoriId.trim() : null;
-  const targetId = buatIdAnggaranDeterministik(anggaran.bulan, targetKategoriId);
   const now = getNowIso();
   const ambang = payload.ambangPeringatanPersen ?? 0.8;
 
   await db.withExclusiveTransactionAsync(async (txn) => {
-    // Jika ID berubah karena kategori berubah
-    if (payload.id !== targetId) {
-      const duplikat = await txn.getFirstAsync<{ id: string }>(
-        `
-          SELECT id
-          FROM anggaran_bulanan
-          WHERE id != $id
-            AND bulan = $bulan
-            AND COALESCE(kategori_id, '__semua__') = $kategori_key
-            AND is_aktif = 1
-          LIMIT 1
-        `,
-        {
-          $id: payload.id,
-          $bulan: anggaran.bulan,
-          $kategori_key: targetKategoriId ?? "__semua__",
-        },
-      );
-
-      if (duplikat && duplikat.id !== targetId) {
-        throw new Error(
-          "Sudah ada anggaran aktif untuk kategori ini di bulan ini.",
-        );
+    const duplikat = await txn.getFirstAsync<{ id: string }>(
+      `
+        SELECT id
+        FROM anggaran_bulanan
+        WHERE id != $id
+          AND bulan = $bulan
+          AND kategori_id IS $kategori_id
+          AND is_aktif = 1
+        LIMIT 1
+      `,
+      {
+        $id: payload.id,
+        $bulan: anggaran.bulan,
+        $kategori_id: targetKategoriId,
       }
+    );
 
-      // Nonaktifkan record lama
-      await txn.runAsync(
-        `
-          UPDATE anggaran_bulanan
-          SET is_aktif = 0,
-              updated_at = $updated_at
-          WHERE id = $id
-        `,
-        {
-          $id: payload.id,
-          $updated_at: now,
-        }
+    if (duplikat) {
+      throw new Error(
+        "Sudah ada anggaran untuk kategori ini bulan ini."
       );
     }
 
-    // Upsert record baru / yang diperbarui
     await txn.runAsync(
       `
-        INSERT INTO anggaran_bulanan (
-          id,
-          bulan,
-          nama,
-          kategori_id,
-          batas_nominal,
-          ambang_peringatan_persen,
-          is_aktif,
-          created_at,
-          updated_at
-        ) VALUES (
-          $id,
-          $bulan,
-          $nama,
-          $kategori_id,
-          $batas_nominal,
-          $ambang,
-          1,
-          $created_at,
-          $updated_at
-        )
-        ON CONFLICT(id) DO UPDATE SET
-          nama = excluded.nama,
-          kategori_id = excluded.kategori_id,
-          batas_nominal = excluded.batas_nominal,
-          ambang_peringatan_persen = excluded.ambang_peringatan_persen,
-          is_aktif = 1,
-          updated_at = excluded.updated_at
+        UPDATE anggaran_bulanan
+        SET nama = $nama,
+            kategori_id = $kategori_id,
+            batas_nominal = $batas_nominal,
+            ambang_peringatan_persen = $ambang,
+            is_aktif = 1,
+            updated_at = $updated_at
+        WHERE id = $id
       `,
       {
-        $id: targetId,
-        $bulan: anggaran.bulan,
+        $id: payload.id,
         $nama: nama,
         $kategori_id: targetKategoriId,
         $batas_nominal: payload.batasNominal,
         $ambang: ambang,
-        $created_at: now,
         $updated_at: now,
       }
     );

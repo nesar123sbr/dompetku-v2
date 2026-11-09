@@ -105,6 +105,7 @@ export default function TransaksiTabPage() {
     intentId?: string | string[];
   }>();
   const lastAppliedRouteIntentRef = useRef<string | null>(null);
+  const isFirstMountRef = useRef(true);
 
   const db = useSQLiteContext();
   const { isGuestMode } = useAuthSession();
@@ -411,9 +412,11 @@ export default function TransaksiTabPage() {
     useCallback(() => {
       let isActive = true;
 
-      async function loadScreenData() {
+      async function loadScreenData(showFullLoader = false) {
         try {
-          setIsLoading(true);
+          if (showFullLoader) {
+            setIsLoading(true);
+          }
           syncJenisTransaksiFromRoute(true);
 
           const data = await fetchData();
@@ -428,11 +431,17 @@ export default function TransaksiTabPage() {
         }
       }
 
-      loadScreenData();
+      if (isFirstMountRef.current) {
+        loadScreenData(true);
+        isFirstMountRef.current = false;
+      } else {
+        loadScreenData(false);
+      }
 
       return () => {
         isActive = false;
       };
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- sengaja: reload hanya saat fokus atau intent route berubah
     }, [fetchData, params.intentId, params.jenis])
   );
 

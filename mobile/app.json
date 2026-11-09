@@ -42,10 +42,7 @@
           "image": "./assets/images/Dompetku.png",
           "imageWidth": 150,
           "resizeMode": "contain",
-          "backgroundColor": "#F7F8FB",
-          "dark": {
-            "backgroundColor": "#000000"
-          }
+          "backgroundColor": "#F7F8FB"
         }
       ],
       "expo-font",

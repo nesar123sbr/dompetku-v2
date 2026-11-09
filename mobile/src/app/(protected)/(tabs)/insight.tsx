@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Text, useWindowDimensions, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -178,6 +178,20 @@ function getPerubahanLabel(value: number | null) {
   return "Pengeluaran periode ini sama seperti periode sebelumnya.";
 }
 
+function formatBulanNama(isoDate: string) {
+  try {
+    const [year, month] = isoDate.split("-").map(Number);
+    if (!year || !month) return isoDate;
+    const date = new Date(year, month - 1, 1);
+    return new Intl.DateTimeFormat("id-ID", {
+      month: "long",
+      year: "numeric",
+    }).format(date);
+  } catch {
+    return isoDate;
+  }
+}
+
 function clampPercent(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(value, 100));
@@ -227,6 +241,7 @@ export default function InsightTabPage() {
   const { isGuestMode } = useAuthSession();
 
   const [isLoading, setIsLoading] = useState(true);
+  const isFirstMountRef = useRef(true);
   const [insight, setInsight] = useState<InsightBulanan>(EMPTY_INSIGHT);
   const [danaDarurat, setDanaDarurat] =
     useState<RingkasanDanaDarurat>(EMPTY_DANA_DARURAT);
@@ -279,12 +294,15 @@ export default function InsightTabPage() {
     setErrorMessage(""); // Bersihkan error jika pakai preset
     setTanggalMulai(formatAman(start));
     setTanggalSelesai(formatAman(end));
-    setExportMessage("Laporan diperbarui mengikuti rentang tanggal baru.");
   }
 
   // === VALIDASI & AUTO-ADJUST RENTANG TANGGAL ===
   function handleDateChange(type: "start" | "end", val: string) {
     setErrorMessage("");
+
+    if (!val || val.length !== 10) {
+      setErrorMessage("Format tanggal harus YYYY-MM-DD.");
+    }
 
     if (type === "start") {
       setTanggalMulai(val);
@@ -297,16 +315,17 @@ export default function InsightTabPage() {
         setTanggalMulai(val);
       }
     }
-    setExportMessage("Laporan diperbarui mengikuti rentang tanggal baru.");
   }
 
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
 
-      async function loadInsight() {
+      async function loadInsight(showFullLoader = false) {
         try {
-          setIsLoading(true);
+          if (showFullLoader) {
+            setIsLoading(true);
+          }
 
           const [insightData, danaDaruratData, pengingatData, anggaranData] =
             await Promise.all([
@@ -330,7 +349,12 @@ export default function InsightTabPage() {
         }
       }
 
-      loadInsight();
+      if (isFirstMountRef.current) {
+        loadInsight(true);
+        isFirstMountRef.current = false;
+      } else {
+        loadInsight(false);
+      }
 
       return () => {
         isActive = false;
@@ -437,20 +461,20 @@ export default function InsightTabPage() {
 
     if (insight.statusKesehatan === "waspada") {
       result.push(
-        "Pengeluaran hampir mendekati uang masuk. Kurangi jajan kecil atau belanja spontan agar sisa bulan ini tidak habis."
+        "Pengeluaran hampir mendekati uang masuk. Kurangi jajan kecil atau belanja spontan agar sisa periode ini tidak habis."
       );
     }
 
     if (insight.perubahanPengeluaranPersen !== null) {
       if (insight.perubahanPengeluaranPersen > 0.2) {
         result.push(
-          "Pengeluaran naik cukup besar dibanding bulan sebelumnya. Cek kategori terbesar supaya tahu bagian mana yang perlu dikurangi."
+          "Pengeluaran naik cukup besar dibanding periode sebelumnya. Cek kategori terbesar supaya tahu bagian mana yang perlu dikurangi."
         );
       }
 
       if (insight.perubahanPengeluaranPersen < -0.1) {
         result.push(
-          "Bagus, pengeluaran turun dibanding bulan sebelumnya. Pertahankan kebiasaan ini sampai akhir bulan."
+          "Bagus, pengeluaran turun dibanding periode sebelumnya. Pertahankan kebiasaan ini sampai akhir periode."
         );
       }
     }
@@ -459,7 +483,7 @@ export default function InsightTabPage() {
 
     if (topKategori && insight.totalPengeluaranBulanIni > 0) {
       result.push(
-        `Pengeluaran terbesar bulan ini ada di ${topKategori.nama}, nilainya ${formatRupiah(
+        `Pengeluaran terbesar periode ini ada di ${topKategori.nama}, nilainya ${formatRupiah(
           topKategori.total
         )}. Coba cek apakah ada belanja di pos ini yang bisa ditunda.`
       );
@@ -499,7 +523,7 @@ export default function InsightTabPage() {
 
     if (result.length === 0) {
       result.push(
-        "Keuangan bulan ini cukup stabil. Lanjutkan pencatatan supaya laporan tetap akurat."
+        "Keuangan periode ini cukup stabil. Lanjutkan pencatatan supaya laporan tetap akurat."
       );
     }
 
@@ -561,27 +585,27 @@ export default function InsightTabPage() {
           Gunakan tombol cepat atau pilih rentang tanggal sendiri.
         </Text>
 
-        <View style={{ flexDirection: 'row', marginBottom: 16, marginTop: 12 }}>
-          <View style={{ flex: 1, marginRight: 8 }}>
+        <View style={insightScreenStyles.presetRow}>
+          <View style={insightScreenStyles.presetItem}>
             <AppButton title="Bulan Ini" variant="secondary" onPress={() => setPreset("bulan_ini")} />
           </View>
-          <View style={{ flex: 1, marginRight: 8 }}>
+          <View style={insightScreenStyles.presetItem}>
             <AppButton title="7 Hari" variant="secondary" onPress={() => setPreset("7_hari")} />
           </View>
-          <View style={{ flex: 1 }}>
+          <View style={insightScreenStyles.presetItemLast}>
             <AppButton title="30 Hari" variant="secondary" onPress={() => setPreset("30_hari")} />
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row' }}>
-          <View style={{ flex: 1, marginRight: 12 }}>
+        <View style={insightScreenStyles.dateRangeRow}>
+          <View style={insightScreenStyles.dateFieldItem}>
             <AppDateField
               label="Dari Tanggal"
               value={tanggalMulai}
               onChangeDate={(val) => handleDateChange("start", val)}
             />
           </View>
-          <View style={{ flex: 1 }}>
+          <View style={insightScreenStyles.dateFieldItemLast}>
             <AppDateField
               label="Sampai Tanggal"
               value={tanggalSelesai}
@@ -591,7 +615,7 @@ export default function InsightTabPage() {
         </View>
 
         {!!errorMessage && (
-          <Text style={{ color: COLORS.danger, marginTop: 12, fontSize: 13 }}>
+          <Text style={insightScreenStyles.dateRangeErrorText}>
             {errorMessage}
           </Text>
         )}
@@ -634,7 +658,7 @@ export default function InsightTabPage() {
       <View style={insightScreenStyles.section}>
         <Text style={insightScreenStyles.sectionTitle}>Ringkasan arus kas</Text>
         <Text style={insightScreenStyles.sectionSubtitle}>
-          Uang masuk, uang keluar, dan sisa bulan ini.
+          Uang masuk, uang keluar, dan sisa pada periode ini.
         </Text>
 
         <View style={insightScreenStyles.summaryGrid}>
@@ -662,7 +686,7 @@ export default function InsightTabPage() {
             <View style={insightScreenStyles.netRow}>
               <View>
                 <Text style={insightScreenStyles.summaryLabel}>
-                  Sisa bulan ini
+                  Sisa periode ini
                 </Text>
                 <Text
                   style={
@@ -698,7 +722,7 @@ export default function InsightTabPage() {
           Pemasukan vs pengeluaran
         </Text>
         <Text style={insightScreenStyles.sectionSubtitle}>
-          Perbandingan sederhana antara uang masuk dan uang keluar bulan ini.
+          Perbandingan sederhana antara uang masuk dan uang keluar periode ini.
         </Text>
 
         <AppCard style={insightScreenStyles.wideCard}>
@@ -752,13 +776,13 @@ export default function InsightTabPage() {
                     ? "Pengeluaran sudah melewati uang masuk."
                     : expenseRatioPercent >= 80
                     ? "Mulai hati-hati, sisa uang makin tipis."
-                    : "Masih ada ruang untuk mengatur sisa uang bulan ini."}
+                    : "Masih ada ruang untuk mengatur sisa uang periode ini."}
                 </Text>
               </View>
             </>
           ) : (
             <Text style={insightScreenStyles.emptyText}>
-              Belum ada pemasukan atau pengeluaran pada bulan ini.
+              Belum ada pemasukan atau pengeluaran pada periode ini.
             </Text>
           )}
         </AppCard>
@@ -804,7 +828,7 @@ export default function InsightTabPage() {
           Pengeluaran terbesar
         </Text>
         <Text style={insightScreenStyles.sectionSubtitle}>
-          Pos yang paling banyak memakai uang bulan ini.
+          Pos yang paling banyak memakai uang periode ini.
         </Text>
 
         {insight.kategoriTeratas.length > 0 ? (
@@ -858,7 +882,7 @@ export default function InsightTabPage() {
         ) : (
           <AppCard style={insightScreenStyles.emptyCard}>
             <Text style={insightScreenStyles.emptyText}>
-              Belum ada pengeluaran pada bulan ini. Catat uang keluar agar
+              Belum ada pengeluaran pada periode ini. Catat uang keluar agar
               laporan kategori muncul.
             </Text>
           </AppCard>
@@ -868,7 +892,7 @@ export default function InsightTabPage() {
       <View style={insightScreenStyles.section}>
         <Text style={insightScreenStyles.sectionTitle}>Anggaran bulanan</Text>
         <Text style={insightScreenStyles.sectionSubtitle}>
-          Pantau batas belanja supaya tidak kebablasan. (Catatan: kartu anggaran mengacu pada bulan dari tanggal mulai: {selectedBulan}).
+          Pantau batas belanja supaya tidak kebablasan (mengikuti anggaran bulan {formatBulanNama(tanggalMulai)}).
         </Text>
 
         {anggaran.length > 0 ? (
@@ -931,7 +955,7 @@ export default function InsightTabPage() {
       <View style={insightScreenStyles.section}>
         <Text style={insightScreenStyles.sectionTitle}>Saran DompetKu</Text>
         <Text style={insightScreenStyles.sectionSubtitle}>
-          Saran ini dibuat dari catatan uangmu bulan ini.
+          Saran ini dibuat dari catatan uangmu periode ini.
         </Text>
 
         <AppCard style={insightScreenStyles.adviceCard}>

@@ -459,4 +459,32 @@ export const insightScreenStyles = StyleSheet.create({
   emptyButton: {
     marginTop: SPACING.lg,
   },
+  presetRow: {
+    flexDirection: "row",
+    marginBottom: SPACING.md,
+    marginTop: SPACING.sm,
+  },
+  presetItem: {
+    flex: 1,
+    marginRight: SPACING.sm,
+  },
+  presetItemLast: {
+    flex: 1,
+  },
+  dateRangeRow: {
+    flexDirection: "row",
+  },
+  dateFieldItem: {
+    flex: 1,
+    marginRight: SPACING.md,
+  },
+  dateFieldItemLast: {
+    flex: 1,
+  },
+  dateRangeErrorText: {
+    color: COLORS.danger,
+    marginTop: SPACING.sm,
+    fontSize: FONT_SIZE.xs,
+    lineHeight: LINE_HEIGHT.xs,
+  },
 });

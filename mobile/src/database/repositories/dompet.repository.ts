@@ -327,11 +327,11 @@ export async function nonaktifkanDompetLokal(
       throw new Error("Dompet tidak ditemukan atau sudah tidak aktif.");
     }
 
-    if (Math.abs(dompet.saldo_saat_ini ?? 0) > 0) {
+    if ((dompet.saldo_saat_ini ?? 0) !== 0) {
       throw new Error(
         "Saldo dompet masih " +
           formatRupiah(dompet.saldo_saat_ini) +
-          ". Pindahkan dulu ke dompet lain lewat Pindah dompet, atau ubah saldo menjadi 0 sebelum menghapus."
+          ". Pindahkan dulu ke dompet lain sebelum menghapus."
       );
     }
 

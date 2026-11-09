@@ -35,6 +35,16 @@ export type LaporanFilterOptions = {
   tanggalSelesai?: string;
 };
 
+export async function getLaporanRentang(
+  db: SQLiteDatabase,
+  payload: { tanggalMulai: string; tanggalSelesai: string }
+): Promise<LaporanBulanan> {
+  return getLaporanBulanan(db, {
+    tanggalMulai: payload.tanggalMulai,
+    tanggalSelesai: payload.tanggalSelesai,
+  });
+}
+
 export async function getLaporanBulanan(
   db: SQLiteDatabase,
   bulanOrOptions: string | LaporanFilterOptions = getBulanIni()

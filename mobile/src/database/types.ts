@@ -71,8 +71,6 @@ export type KategoriPengeluaranRow = {
 export type RingkasanDashboard = {
   totalSaldo: number;
   totalDanaDarurat: number;
-  totalPemasukan: number;
-  totalPengeluaran: number;
   jumlahDompetAktif: number;
   jumlahPengingatAktif: number;
 };

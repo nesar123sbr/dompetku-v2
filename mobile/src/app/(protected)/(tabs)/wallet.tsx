@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Keyboard,
@@ -360,10 +360,31 @@ function WalletListItem({
   );
 }
 
+function getFirstSearchParam(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+  return value ?? null;
+}
+
+function getRouteIntentKey(
+  action: string | string[] | undefined,
+  intentId: string | string[] | undefined
+) {
+  return `${getFirstSearchParam(action) ?? ""}|${
+    getFirstSearchParam(intentId) ?? ""
+  }`;
+}
+
 export default function WalletTabPage() {
   const router = useRouter();
   const db = useSQLiteContext();
-  const params = useLocalSearchParams<{ action?: string }>();
+  const params = useLocalSearchParams<{
+    action?: string | string[];
+    intentId?: string | string[];
+  }>();
+  const lastAppliedRouteIntentRef = useRef<string | null>(null);
+  const isFirstMountRef = useRef(true);
   const { isGuestMode } = useAuthSession();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -544,11 +565,16 @@ export default function WalletTabPage() {
 
   // ✅ useEffect berjalan dengan sempurna tanpa warning linter
   useEffect(() => {
-    if (params.action === "transfer" && dompetList.length > 0) {
-      openTransferPanel();
-      router.setParams({ action: undefined });
+    const action = getFirstSearchParam(params.action);
+    if (action === "transfer" && dompetList.length > 0) {
+      const routeIntentKey = getRouteIntentKey(params.action, params.intentId);
+      if (lastAppliedRouteIntentRef.current !== routeIntentKey) {
+        lastAppliedRouteIntentRef.current = routeIntentKey;
+        openTransferPanel();
+        router.setParams({ action: undefined, intentId: undefined });
+      }
     }
-  }, [params.action, dompetList.length, openTransferPanel, router]);
+  }, [params.action, params.intentId, dompetList.length, openTransferPanel, router]);
 
   function openTransferDariDompet(dompetId: string) {
     Keyboard.dismiss();
@@ -663,7 +689,7 @@ export default function WalletTabPage() {
       setFormError(
         "Saldo dompet masih " +
           formatRupiah(selectedKelolaDompet.saldo_saat_ini) +
-          ". Pindahkan dulu ke dompet lain lewat Pindah dompet, atau ubah saldo menjadi 0 sebelum menghapus."
+          ". Pindahkan dulu ke dompet lain sebelum menghapus."
       );
       return;
     }
@@ -715,9 +741,11 @@ export default function WalletTabPage() {
     useCallback(() => {
       let isActive = true;
 
-      async function loadWalletData() {
+      async function loadWalletData(showFullLoader = false) {
         try {
-          setIsLoading(true);
+          if (showFullLoader) {
+            setIsLoading(true);
+          }
           const data = await fetchData();
 
           if (!isActive) return;
@@ -730,7 +758,12 @@ export default function WalletTabPage() {
         }
       }
 
-      loadWalletData();
+      if (isFirstMountRef.current) {
+        loadWalletData(true);
+        isFirstMountRef.current = false;
+      } else {
+        loadWalletData(false);
+      }
 
       return () => {
         isActive = false;

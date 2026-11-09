@@ -7,14 +7,6 @@ type RingkasanDompetRow = {
   jumlah_dompet_aktif: number | null;
 };
 
-type RingkasanPemasukanRow = {
-  total_pemasukan: number | null;
-};
-
-type RingkasanPengeluaranRow = {
-  total_pengeluaran: number | null;
-};
-
 type RingkasanPengingatRow = {
   jumlah_pengingat_aktif: number | null;
 };
@@ -32,24 +24,6 @@ export async function getRingkasanDashboard(
     `
   );
 
-  const pemasukanRow = await db.getFirstAsync<RingkasanPemasukanRow>(
-    `
-      SELECT
-        COALESCE(SUM(jumlah), 0) AS total_pemasukan
-      FROM pemasukan
-      WHERE is_deleted = 0
-    `
-  );
-
-  const pengeluaranRow = await db.getFirstAsync<RingkasanPengeluaranRow>(
-    `
-      SELECT
-        COALESCE(SUM(jumlah), 0) AS total_pengeluaran
-      FROM pengeluaran
-      WHERE is_deleted = 0
-    `
-  );
-
   const pengingatRow = await db.getFirstAsync<RingkasanPengingatRow>(
     `
       SELECT
@@ -63,8 +37,6 @@ export async function getRingkasanDashboard(
     totalSaldo: dompetRow?.total_saldo ?? 0,
     totalDanaDarurat: dompetRow?.total_dana_darurat ?? 0,
     jumlahDompetAktif: dompetRow?.jumlah_dompet_aktif ?? 0,
-    totalPemasukan: pemasukanRow?.total_pemasukan ?? 0,
-    totalPengeluaran: pengeluaranRow?.total_pengeluaran ?? 0,
     jumlahPengingatAktif: pengingatRow?.jumlah_pengingat_aktif ?? 0,
   };
 }
@@ -88,11 +60,17 @@ export async function getRingkasanFilterPeriode(
   const params: Record<string, string> = {};
 
   if (payload.tahunBulan) {
-    wherePemasukan += ` AND tanggal_transaksi LIKE $tahunBulan`;
-    wherePengeluaran += ` AND tanggal_transaksi LIKE $tahunBulan`;
-    params.$tahunBulan = `${payload.tahunBulan}%`;
+    const [year, month] = payload.tahunBulan.split("-").map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    const mulai = `${payload.tahunBulan}-01`;
+    const selesai = `${payload.tahunBulan}-${String(lastDay).padStart(2, "0")}`;
+
+    wherePemasukan += ` AND tanggal_transaksi >= $mulai AND tanggal_transaksi <= $selesai`;
+    wherePengeluaran += ` AND tanggal_transaksi >= $mulai AND tanggal_transaksi <= $selesai`;
+    params.$mulai = mulai;
+    params.$selesai = selesai;
   } else {
-    // 🔥 SARGABLE: pakai >= dan <= langsung, tambahkan waktu agar presisi
+    // SARGABLE: pakai >= dan <= langsung
     if (payload.tanggalMulai) {
       wherePemasukan += ` AND tanggal_transaksi >= $tanggalMulai`;
       wherePengeluaran += ` AND tanggal_transaksi >= $tanggalMulai`;

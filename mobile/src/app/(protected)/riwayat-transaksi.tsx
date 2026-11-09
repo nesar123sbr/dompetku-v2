@@ -978,11 +978,12 @@ export default function RiwayatTransaksiPage() {
                 );
               } catch (error) {
                 console.log("handleDelete riwayat error:", error);
-                setErrorMessage(
+                const pesanError =
                   error instanceof Error
                     ? error.message
-                    : "Transaksi belum berhasil dihapus.",
-                );
+                    : "Transaksi belum berhasil dihapus.";
+                setErrorMessage(pesanError);
+                Alert.alert("Gagal menghapus", pesanError);
               }
             },
           },
@@ -1140,7 +1141,7 @@ export default function RiwayatTransaksiPage() {
 
   return (
     <AppScreen
-      safeTop
+      safeTop={!isTabMode}
       contentContainerStyle={riwayatScreenStyles.screenContent}
     >
       <View style={riwayatScreenStyles.listWrap}>

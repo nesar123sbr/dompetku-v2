@@ -243,6 +243,10 @@ export async function scheduleTestNotificationInFiveSecondsAsync() {
   };
 }
 
+export async function getAllScheduledNotificationsAsync() {
+  return await Notifications.getAllScheduledNotificationsAsync();
+}
+
 export async function getScheduledNotificationCountAsync() {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   return scheduled.length;

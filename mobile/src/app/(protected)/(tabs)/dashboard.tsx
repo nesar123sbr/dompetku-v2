@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { type Href, useFocusEffect, useRouter } from "expo-router";
@@ -28,8 +28,6 @@ import { dashboardScreenStyles } from "@assets/styles/screens/protected/dashboar
 const EMPTY_RINGKASAN: RingkasanDashboard = {
   totalSaldo: 0,
   totalDanaDarurat: 0,
-  totalPemasukan: 0,
-  totalPengeluaran: 0,
   jumlahDompetAktif: 0,
   jumlahPengingatAktif: 0,
 };
@@ -254,9 +252,17 @@ export default function DashboardTabPage() {
   const { isGuestMode, isOfflineSession } = useAuthSession();
 
   const [isLoading, setIsLoading] = useState(true);
+  const isFirstMountRef = useRef(true);
   const [showSaldo, setShowSaldo] = useState(true);
   const [ringkasan, setRingkasan] =
     useState<RingkasanDashboard>(EMPTY_RINGKASAN);
+  const [arusKasBulanIni, setArusKasBulanIni] = useState<{
+    totalPemasukan: number;
+    totalPengeluaran: number;
+  }>({
+    totalPemasukan: 0,
+    totalPengeluaran: 0,
+  });
   const [previewPengingat, setPreviewPengingat] = useState<
     PengingatTagihanListItem[]
   >([]);
@@ -274,16 +280,18 @@ export default function DashboardTabPage() {
     useCallback(() => {
       let isActive = true;
 
-      async function loadDashboard() {
+      async function loadDashboard(showFullLoader = false) {
         try {
-          setIsLoading(true);
+          if (showFullLoader) {
+            setIsLoading(true);
+          }
 
           // 1. Dapatkan string Bulan Ini dengan presisi (Format YYYY-MM)
           const now = new Date();
           const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
           // 2. Tembak database secara paralel
-          const [ringkasanAllTime, ringkasanBulanIni, previewResult, copyBudgetResult] = await Promise.all([
+          const [ringkasanDashboard, ringkasanBulanIni, previewResult, copyBudgetResult] = await Promise.all([
             getRingkasanDashboard(db),
             getRingkasanFilterPeriode(db, { tahunBulan: currentMonth }),
             getPreviewPengingatDashboard(db, 3),
@@ -292,14 +300,8 @@ export default function DashboardTabPage() {
 
           if (!isActive) return;
 
-          // 3. Gabungkan: total saldo/darurat dari all-time, tapi pemasukan/pengeluaran dari bulan ini
-          const ringkasanMerged = {
-            ...ringkasanAllTime,
-            totalPemasukan: ringkasanBulanIni.totalPemasukan,
-            totalPengeluaran: ringkasanBulanIni.totalPengeluaran,
-          };
-
-          setRingkasan(ringkasanMerged);
+          setRingkasan(ringkasanDashboard);
+          setArusKasBulanIni(ringkasanBulanIni);
           setPreviewPengingat(previewResult);
           setSalinAnggaranInfo(copyBudgetResult);
         } catch (error) {
@@ -310,7 +312,12 @@ export default function DashboardTabPage() {
         }
       }
 
-      loadDashboard();
+      if (isFirstMountRef.current) {
+        loadDashboard(true);
+        isFirstMountRef.current = false;
+      } else {
+        loadDashboard(false);
+      }
 
       return () => {
         isActive = false;
@@ -333,16 +340,21 @@ export default function DashboardTabPage() {
     }
   }
 
-  const sisaBulanIni = ringkasan.totalPemasukan - ringkasan.totalPengeluaran;
+  const sisaBulanIni =
+    arusKasBulanIni.totalPemasukan - arusKasBulanIni.totalPengeluaran;
   const uangAmanDipakai = Math.max(0, sisaBulanIni);
 
   const status = useMemo(
-    () => getHomeStatus(ringkasan.totalPemasukan, ringkasan.totalPengeluaran),
-    [ringkasan.totalPemasukan, ringkasan.totalPengeluaran]
+    () =>
+      getHomeStatus(
+        arusKasBulanIni.totalPemasukan,
+        arusKasBulanIni.totalPengeluaran
+      ),
+    [arusKasBulanIni.totalPemasukan, arusKasBulanIni.totalPengeluaran]
   );
 
   const hasMonthlyData =
-    ringkasan.totalPemasukan > 0 || ringkasan.totalPengeluaran > 0;
+    arusKasBulanIni.totalPemasukan > 0 || arusKasBulanIni.totalPengeluaran > 0;
 
   const uangAmanTitle = useMemo(() => {
     if (!hasMonthlyData) {
@@ -353,12 +365,12 @@ export default function DashboardTabPage() {
       return "Belum aman untuk belanja tambahan";
     }
 
-    if (ringkasan.totalPemasukan <= 0) {
+    if (arusKasBulanIni.totalPemasukan <= 0) {
       return "Perlu catat uang masuk dulu";
     }
 
     const rasioPengeluaran =
-      ringkasan.totalPengeluaran / ringkasan.totalPemasukan;
+      arusKasBulanIni.totalPengeluaran / arusKasBulanIni.totalPemasukan;
 
     if (rasioPengeluaran <= 0.6) {
       return "Masih aman untuk belanja kecil";
@@ -371,8 +383,8 @@ export default function DashboardTabPage() {
     return "Sebaiknya mulai hemat";
   }, [
     hasMonthlyData,
-    ringkasan.totalPemasukan,
-    ringkasan.totalPengeluaran,
+    arusKasBulanIni.totalPemasukan,
+    arusKasBulanIni.totalPengeluaran,
     sisaBulanIni,
   ]);
 
@@ -622,7 +634,7 @@ export default function DashboardTabPage() {
           </View>
 
           <Text style={dashboardScreenStyles.monthValueIncome}>
-            {displayMoney(ringkasan.totalPemasukan)}
+            {displayMoney(arusKasBulanIni.totalPemasukan)}
           </Text>
           <Text style={dashboardScreenStyles.monthHelper}>Bulan ini</Text>
         </AppCard>
@@ -641,7 +653,7 @@ export default function DashboardTabPage() {
           </View>
 
           <Text style={dashboardScreenStyles.monthValueExpense}>
-            {displayMoney(ringkasan.totalPengeluaran)}
+            {displayMoney(arusKasBulanIni.totalPengeluaran)}
           </Text>
           <Text style={dashboardScreenStyles.monthHelper}>Bulan ini</Text>
         </AppCard>

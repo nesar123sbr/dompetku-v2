@@ -48,28 +48,28 @@ type LoadedAnggaranData = {
 
 type AnggaranBadgeVariant = "success" | "warning" | "danger" | "neutral" | "info";
 
-function getAnggaranBadge(persentaseTerpakai: number): {
+function getAnggaranBadge(status: RingkasanAnggaranBulananItem["status"]): {
   label: string;
   variant: AnggaranBadgeVariant;
 } {
-  if (persentaseTerpakai >= 1) {
-    return {
-      label: "Overbudget!",
-      variant: "danger",
-    };
+  switch (status) {
+    case "melewati_batas":
+      return {
+        label: "Overbudget!",
+        variant: "danger",
+      };
+    case "mendekati_batas":
+      return {
+        label: "Hampir Habis",
+        variant: "warning",
+      };
+    case "aman":
+    default:
+      return {
+        label: "Aman",
+        variant: "success",
+      };
   }
-
-  if (persentaseTerpakai >= 0.8) {
-    return {
-      label: "Hampir Habis",
-      variant: "warning",
-    };
-  }
-
-  return {
-    label: "Aman",
-    variant: "success",
-  };
 }
 
 export default function AnggaranPage() {
@@ -481,7 +481,7 @@ export default function AnggaranPage() {
 
         {anggaranList.length > 0 ? (
           anggaranList.map((item) => {
-            const badge = getAnggaranBadge(item.persentase_terpakai);
+            const badge = getAnggaranBadge(item.status);
             const isSelected = editingAnggaranId === item.id;
 
             return (

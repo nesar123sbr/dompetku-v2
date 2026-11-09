@@ -17,7 +17,7 @@ import {
   type KoreksiSaldoDompetRow,
 } from "@/database";
 import { formatRupiah, formatTanggalWaktuIndonesia } from "@/utils";
-import { auditSaldoScreenStyles } from "../../../assets/styles/screens/protected/auditSaldoScreen.styles";
+import { auditSaldoScreenStyles } from "@assets/styles/screens/protected/auditSaldoScreen.styles";
 
 const PAGE_SIZE = 30;
 
