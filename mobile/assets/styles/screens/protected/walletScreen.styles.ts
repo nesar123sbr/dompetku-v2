@@ -534,4 +534,13 @@ export const walletScreenStyles = StyleSheet.create({
     lineHeight: LINE_HEIGHT.sm,
     color: COLORS.textSecondary,
   },
+  inlineLinkRow: {
+    marginTop: 12,
+    alignItems: "center",
+  },
+  inlineLinkText: {
+    fontSize: 13,
+    color: COLORS.brandPrimary,
+    textDecorationLine: "underline",
+  },
 });

@@ -519,4 +519,17 @@ export const dashboardScreenStyles = StyleSheet.create({
     borderRadius: RADIUS.xl,
     backgroundColor: COLORS.border,
   },
+  inlineTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+  },
+  inlineButtonRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  inlineFlexItem: {
+    flex: 1,
+  },
 });

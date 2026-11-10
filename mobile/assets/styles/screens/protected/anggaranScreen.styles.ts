@@ -111,4 +111,10 @@ export const anggaranScreenStyles = StyleSheet.create({
   pressedCard: {
     opacity: 0.85,
   },
+  inlineTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+  },
 });

@@ -533,14 +533,7 @@ export default function DashboardTabPage() {
       {salinAnggaranInfo.bisaSalin ? (
         <View style={dashboardScreenStyles.banner}>
           <AppCard>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 6,
-              }}
-            >
+            <View style={dashboardScreenStyles.inlineTitleRow}>
               <Ionicons
                 name="speedometer-outline"
                 size={20}
@@ -562,14 +555,14 @@ export default function DashboardTabPage() {
               {salinAnggaranInfo.bulanLalu}) yang bisa kamu salin langsung.
             </Text>
 
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <View style={{ flex: 1 }}>
+            <View style={dashboardScreenStyles.inlineButtonRow}>
+              <View style={dashboardScreenStyles.inlineFlexItem}>
                 <AppButton
                   title="Salin sekarang"
                   onPress={handleSalinAnggaranDashboard}
                 />
               </View>
-              <View style={{ flex: 1 }}>
+              <View style={dashboardScreenStyles.inlineFlexItem}>
                 <AppButton
                   title="Atur sendiri"
                   variant="secondary"

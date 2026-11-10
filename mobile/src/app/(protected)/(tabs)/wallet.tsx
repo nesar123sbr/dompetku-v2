@@ -1273,16 +1273,10 @@ export default function WalletTabPage() {
                 />
 
                 <Pressable
-                  style={{ marginTop: 12, alignItems: "center" }}
+                  style={walletScreenStyles.inlineLinkRow}
                   onPress={() => router.push(ROUTES.PROTECTED.AUDIT_SALDO)}
                 >
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: COLORS.brandPrimary,
-                      textDecorationLine: "underline",
-                    }}
-                  >
+                  <Text style={walletScreenStyles.inlineLinkText}>
                     Periksa & hitung ulang saldo dompet di Audit Saldo →
                   </Text>
                 </Pressable>

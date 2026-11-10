@@ -343,14 +343,7 @@ export default function AnggaranPage() {
 
       {copyStatus.bisaSalin && anggaranList.length === 0 ? (
         <AppCard style={anggaranScreenStyles.card}>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 6,
-            }}
-          >
+          <View style={anggaranScreenStyles.inlineTitleRow}>
             <Ionicons name="copy-outline" size={20} color={COLORS.brandPrimary} />
             <Text style={anggaranScreenStyles.sectionTitle}>
               Salin anggaran bulan lalu
