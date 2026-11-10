@@ -40,6 +40,7 @@ import {
   dateToDateInput,
   formatRupiah,
   formatTanggalIndonesiaPendek,
+  getTodayDateInput,
 } from "@/utils";
 import { riwayatScreenStyles } from "@assets/styles/screens/protected/riwayatScreen.styles";
 
@@ -137,10 +138,6 @@ const PERIODE_FILTERS: {
   },
 ];
 
-function getTodayInput() {
-  return dateToDateInput(new Date());
-}
-
 function addDays(date: Date, days: number) {
   const cloned = new Date(date);
   cloned.setDate(cloned.getDate() + days);
@@ -162,7 +159,7 @@ function getDateRangeForPeriod(
   const now = new Date();
 
   if (periode === "hari_ini") {
-    const today = getTodayInput();
+    const today = getTodayDateInput();
 
     return {
       tanggalMulai: today,
@@ -238,7 +235,7 @@ function getPeriodeTitle(periode: FilterPeriode, customMonthDate: string) {
 }
 
 function getDateGroupLabel(value: string) {
-  const today = getTodayInput();
+  const today = getTodayDateInput();
   const yesterday = dateToDateInput(addDays(new Date(), -1));
 
   if (value === today) {
@@ -721,7 +718,7 @@ export default function RiwayatTransaksiPage() {
   const [keyword, setKeyword] = useState("");
   const [jenis, setJenis] = useState<FilterJenis>("semua");
   const [periode, setPeriode] = useState<FilterPeriode>("bulan_ini");
-  const [customMonthDate, setCustomMonthDate] = useState(getTodayInput());
+  const [customMonthDate, setCustomMonthDate] = useState(getTodayDateInput());
 
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -934,7 +931,7 @@ export default function RiwayatTransaksiPage() {
     setKeyword("");
     setJenis("semua");
     setPeriode("bulan_ini");
-    setCustomMonthDate(getTodayInput());
+    setCustomMonthDate(getTodayDateInput());
     resetPagingState();
   }, [resetPagingState]);
 

@@ -18,3 +18,7 @@ supabase/tmp/
 
 # Repomix output
 repomix-output.*
+
+# Supabase branches
+supabase/.branches/
+

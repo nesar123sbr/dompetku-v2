@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -27,10 +28,8 @@ import {
   keluarAkunDanKembaliKeModeLokal,
   kirimUlangOtpPendaftaran,
   masukDenganPasswordDanHubungkanDataLokal,
-  sinkronisasiAwalDataLokalKeSupabase,
   sinkronisasiCloudSekarang,
   type RingkasanSinkronisasiDuaArah,
-  type SinkronisasiAwalSummary,
   type SyncOptions,
   verifikasiOtpEmailDanHubungkanDataLokal,
   // 👇 1. IMPORT SERVICE LUPA PASSWORD
@@ -90,7 +89,6 @@ type AuthContextValue = {
     hapusDataLokal?: boolean;
   }) => Promise<string>;
 
-  syncInitialLocalData: () => Promise<SinkronisasiAwalSummary>;
   syncCloudNow: (options?: SyncOptions) => Promise<RingkasanSinkronisasiDuaArah>;
 
   // 👇 2A. TYPE UNTUK FUNCTION BARU
@@ -148,17 +146,6 @@ const AuthContext = createContext<AuthContextValue>({
 
   signOutUser: async () => MODE_PENGGUNAAN.NONE,
   deleteAccountAndData: async () => MODE_PENGGUNAAN.NONE,
-
-  syncInitialLocalData: async () => ({
-    profilPengguna: 0,
-    dompet: 0,
-    kategoriPemasukan: 0,
-    kategoriPengeluaran: 0,
-    pemasukan: 0,
-    pengeluaran: 0,
-    pengingatTagihan: 0,
-    transferDompet: 0,
-  }),
 
   syncCloudNow: async () => ({
     mode: "awal",
@@ -239,6 +226,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isRemoteReady, setIsRemoteReady] = useState(
     !isSupabaseConfigured || !supabase
   );
+  const isRecoveringPasswordRef = useRef(false);
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
 
   // 👇 HOTFIX 0.1: Duplicate getModePenggunaan dihapus
@@ -336,6 +324,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (isRecoveringPasswordRef.current && event !== "SIGNED_OUT") {
+        return;
+      }
+
       if (event === "SIGNED_OUT") {
         setSession(null);
         setIsRemoteReady(true);
@@ -517,21 +509,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     [db, refreshLocalState]
   );
 
-  const syncInitialLocalData = useCallback(async () => {
-    if (!session?.user) {
-      throw new Error("Kamu harus masuk ke akun dulu sebelum sinkronisasi.");
-    }
-
-    const result = await sinkronisasiAwalDataLokalKeSupabase(
-      db,
-      session.user
-    );
-
-    await refreshLocalState();
-
-    return result;
-  }, [db, refreshLocalState, session]);
-
   const syncCloudNow = useCallback(async (options?: SyncOptions) => {
     if (!session?.user) {
       throw new Error("Kamu harus masuk ke akun dulu sebelum sinkronisasi.");
@@ -563,13 +540,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
       token: string;
       passwordBaru: string;
     }) => {
-      setIsRecoveringPassword(true);
+      isRecoveringPasswordRef.current = true;
       try {
-        await resetPasswordDenganOtp(payload);
-        setSession(null);
-        await refreshLocalState();
+        setIsRecoveringPassword(true);
+        try {
+          await resetPasswordDenganOtp(payload);
+          setSession(null);
+          await refreshLocalState();
+        } finally {
+          setIsRecoveringPassword(false);
+        }
       } finally {
-        setIsRecoveringPassword(false);
+        isRecoveringPasswordRef.current = false;
       }
     },
     [refreshLocalState]
@@ -613,7 +595,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       signInWithPassword,
       signOutUser,
       deleteAccountAndData,
-      syncInitialLocalData,
       syncCloudNow,
 
       // 👇 4. EXPORT FUNCTION AGAR BISA DIPAKAI DI LAYAR UI
@@ -637,7 +618,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     signInWithPassword,
     signOutUser,
     deleteAccountAndData,
-    syncInitialLocalData,
     syncCloudNow,
     sendPasswordResetOtp,
     resetPasswordWithOtp,

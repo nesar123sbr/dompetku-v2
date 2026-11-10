@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from "expo-sqlite";
 
+import { getBulanIni } from "../helpers";
+
 export type LaporanTransaksiRow = {
   jenis: "pemasukan" | "pengeluaran";
   judul: string;
@@ -21,13 +23,6 @@ export type LaporanBulanan = {
 type TotalRow = {
   total: number | null;
 };
-
-function getBulanIni() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-}
 
 export type LaporanFilterOptions = {
   bulan?: string;

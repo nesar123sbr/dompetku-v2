@@ -1,5 +1,5 @@
 import type { SQLiteDatabase } from "expo-sqlite";
-import { assertNominalDalamBatas, getNowIso } from "../helpers";
+import { assertNominalDalamBatas, getBulanIni, getNowIso } from "../helpers";
 import type { RingkasanAnggaranBulananItem } from "../types";
 
 type AnggaranRow = {
@@ -17,13 +17,6 @@ type AnggaranKelolaRow = {
   id: string;
   is_aktif: number;
 };
-
-function getBulanIni() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-}
 
 function hitungStatus(
   persentase: number,

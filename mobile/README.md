@@ -1,50 +1,53 @@
-# Welcome to your Expo app 👋
+# DompetKu v2
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+DompetKu v2 adalah aplikasi pencatat keuangan pribadi berbasis offline-first yang menyimpan seluruh data pengguna di SQLite lokal perangkat. Aplikasi ini mendukung pencadangan dan sinkronisasi data dua arah ke cloud menggunakan Supabase saat terhubung ke internet.
 
-## Get started
+## Fitur Utama
 
-1. Install dependencies
+- Pencatatan transaksi pemasukan dan pengeluaran.
+- Manajemen multi dompet, termasuk pengelolaan dana darurat.
+- Perencanaan dan pemantauan anggaran bulanan.
+- Pengingat tagihan dengan notifikasi lokal perangkat.
+- Laporan keuangan periode dengan opsi ekspor ke format PDF dan CSV.
+- Mode tamu (dapat digunakan langsung tanpa perlu login akun).
+- Sinkronisasi cloud dua arah (offline-first sync).
 
-   ```bash
-   npm install
-   ```
+## Teknologi
 
-2. Start the app
+- **Framework**: Expo (~58.0.23) & React Native (0.88.1)
+- **Routing**: Expo Router (~58.0.30)
+- **Database Lokal**: expo-sqlite (~58.0.15)
+- **Backend & Auth**: Supabase (@supabase/supabase-js ^2.101.1)
 
-   ```bash
-   npx expo start
-   ```
+## Cara Menjalankan
 
-In the output, you'll find options to open the app in a
+1. Pasang dependensi: `npm install`
+2. Jalankan aplikasi: `npx expo start`
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Variabel Lingkungan
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Konfigurasikan variabel lingkungan berikut pada file `.env`:
+- `EXPO_PUBLIC_SUPABASE_URL`
+- `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
-## Get a fresh project
+## Perintah Berguna
 
-When you're ready, run:
+- `npm run typecheck` - Menjalankan pemeriksaan tipe TypeScript (`tsc --noEmit`).
+- `npm run lint` - Menjalankan linter kode Expo/ESLint (`expo lint`).
 
-```bash
-npm run reset-project
-```
+## Struktur Folder
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+- `src/app/` - Rute dan layar aplikasi berbasis Expo Router.
+- `src/components/` - Komponen UI modular dan reusable.
+- `src/constants/` - Konstanta aplikasi, rute, warna, dan tema.
+- `src/database/` - Skema tabel, repositori SQLite, dan migrasi lokal.
+- `src/lib/` - Klien Supabase, utilitas notifikasi, dan logger.
+- `src/providers/` - Context provider autentikasi dan database lokal.
+- `src/services/` - Logika bisnis, ekspor laporan, dan mesin sinkronisasi.
+- `src/utils/` - Helper format mata uang, tanggal, dan normalisasi data.
+- `assets/` - Aset gambar, font, dan stylesheet global.
 
-## Learn more
+## Database
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- **SQLite Lokal**: Skrip migrasi lokal dikelola di `mobile/src/database/migrations.ts`.
+- **Cloud Database**: Skrip migrasi Supabase tersimpan di folder `supabase/migrations/` dan dijalankan secara manual oleh pemilik proyek melalui Supabase CLI (tidak berjalan otomatis dari aplikasi).

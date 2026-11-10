@@ -1,6 +1,4 @@
 import type {
-  DompetJenis,
-  DompetTipe,
   PengingatPengulangan,
   StatusDanaDarurat,
 } from "@/database";
@@ -46,10 +44,6 @@ export function formatLabelModePenggunaan(mode: string) {
   }
 }
 
-export function formatYaTidak(value: boolean) {
-  return value ? "Ya" : "Tidak";
-}
-
 export function formatTanggalIndonesiaPendek(value: string) {
   if (!value) return "-";
 
@@ -72,39 +66,6 @@ export function formatTanggalWaktuIndonesia(value?: string | null) {
   }
 
   return tanggalWaktuFormatter.format(parsed);
-}
-
-export function formatJenisDompetLabel(jenis: DompetJenis) {
-  switch (jenis) {
-    case "utama":
-      return "Dompet utama";
-    case "tabungan":
-      return "Tabungan";
-    case "dana_darurat":
-      return "Dana darurat";
-    default:
-      return jenis;
-  }
-}
-
-// 👇 TAMBAHAN BARU
-export function formatTipeDompetLabel(tipe: DompetTipe) {
-  switch (tipe) {
-    case "tunai":
-      return "Tunai / cash";
-    case "bank":
-      return "Rekening bank";
-    case "ewallet":
-      return "E-wallet";
-    case "tabungan":
-      return "Tabungan";
-    case "dana_darurat":
-      return "Dana darurat";
-    case "lainnya":
-      return "Lainnya";
-    default:
-      return tipe;
-  }
 }
 
 export function formatLabelStatusDanaDarurat(status: StatusDanaDarurat) {

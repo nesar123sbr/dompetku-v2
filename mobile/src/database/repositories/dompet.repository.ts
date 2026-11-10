@@ -77,32 +77,6 @@ export async function getSemuaDompetAktif(
   return rows ?? [];
 }
 
-export async function getDompetDanaDarurat(
-  db: SQLiteDatabase
-): Promise<DompetRow | null> {
-  const row = await db.getFirstAsync<DompetRow>(
-    `
-      SELECT
-        id,
-        nama,
-        jenis,
-        COALESCE(tipe_dompet, 'dana_darurat') AS tipe_dompet,
-        saldo_saat_ini,
-        COALESCE(saldo_awal, 0) AS saldo_awal,
-        is_default,
-        is_aktif,
-        created_at,
-        updated_at
-      FROM dompet
-      WHERE is_aktif = 1
-        AND jenis = 'dana_darurat'
-      LIMIT 1
-    `
-  );
-
-  return row ?? null;
-}
-
 export async function tambahDompetLokal(
   db: SQLiteDatabase,
   payload: {
