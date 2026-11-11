@@ -402,14 +402,14 @@ export default function WalletTabPage() {
     []
   );
 
-  const [selectedSumberId, setSelectedSumberId] = useState<string | null>(null);
-  const [selectedTujuanId, setSelectedTujuanId] = useState<string | null>(null);
+  const [sumberIdPilihan, setSelectedSumberId] = useState<string | null>(null);
+  const [tujuanIdPilihan, setSelectedTujuanId] = useState<string | null>(null);
 
   const [jumlahTransferInput, setJumlahTransferInput] = useState("");
   const [tanggalTransfer, setTanggalTransfer] = useState(getTodayDateInput());
   const [catatanTransfer, setCatatanTransfer] = useState("");
-  const [konfirmasiGunakanDanaDarurat, setKonfirmasiGunakanDanaDarurat] =
-    useState(false);
+  const [konfirmasiDaruratUntukId, setKonfirmasiDaruratUntukId] =
+    useState<string | null>(null);
 
   const [namaDompetBaru, setNamaDompetBaru] = useState("");
   const [tipeDompetBaru, setTipeDompetBaru] = useState<DompetTipe>("tunai");
@@ -441,6 +441,17 @@ export default function WalletTabPage() {
     [saldoEditInput]
   );
 
+  const selectedSumberId = useMemo(() => {
+    if (
+      sumberIdPilihan &&
+      dompetList.some((item) => item.id === sumberIdPilihan)
+    ) {
+      return sumberIdPilihan;
+    }
+
+    return dompetList[0]?.id ?? null;
+  }, [dompetList, sumberIdPilihan]);
+
   const dompetSumber = useMemo(() => {
     return dompetList.find((item) => item.id === selectedSumberId) ?? null;
   }, [dompetList, selectedSumberId]);
@@ -449,11 +460,24 @@ export default function WalletTabPage() {
     return dompetList.filter((item) => item.id !== selectedSumberId);
   }, [dompetList, selectedSumberId]);
 
+  const selectedTujuanId = useMemo(() => {
+    if (
+      tujuanIdPilihan &&
+      dompetTargetList.some((item) => item.id === tujuanIdPilihan)
+    ) {
+      return tujuanIdPilihan;
+    }
+
+    return dompetTargetList[0]?.id ?? null;
+  }, [dompetTargetList, tujuanIdPilihan]);
+
   const dompetTujuan = useMemo(() => {
     return dompetTargetList.find((item) => item.id === selectedTujuanId) ?? null;
   }, [dompetTargetList, selectedTujuanId]);
 
   const isSumberDanaDarurat = isDompetDanaDarurat(dompetSumber);
+  const konfirmasiGunakanDanaDarurat =
+    isSumberDanaDarurat && konfirmasiDaruratUntukId === selectedSumberId;
   const isTujuanDanaDarurat = isDompetDanaDarurat(dompetTujuan);
 
   const saldoSumberSesudah = useMemo(() => {
@@ -615,7 +639,7 @@ export default function WalletTabPage() {
     setJumlahTransferInput("");
     setTanggalTransfer(getTodayDateInput());
     setCatatanTransfer("");
-    setKonfirmasiGunakanDanaDarurat(false);
+    setKonfirmasiDaruratUntukId(null);
     clearMessages();
   }
 
@@ -772,30 +796,7 @@ export default function WalletTabPage() {
     }, [fetchData])
   );
 
-  useEffect(() => {
-    if (
-      !selectedSumberId ||
-      !dompetList.some((item) => item.id === selectedSumberId)
-    ) {
-      setSelectedSumberId(dompetList[0]?.id ?? null);
-    }
-  }, [dompetList, selectedSumberId]);
 
-  useEffect(() => {
-    if (
-      !selectedTujuanId ||
-      selectedTujuanId === selectedSumberId ||
-      !dompetTargetList.some((item) => item.id === selectedTujuanId)
-    ) {
-      setSelectedTujuanId(dompetTargetList[0]?.id ?? null);
-    }
-  }, [dompetTargetList, selectedSumberId, selectedTujuanId]);
-
-  useEffect(() => {
-    if (!isSumberDanaDarurat && konfirmasiGunakanDanaDarurat) {
-      setKonfirmasiGunakanDanaDarurat(false);
-    }
-  }, [isSumberDanaDarurat, konfirmasiGunakanDanaDarurat]);
 
   async function handleTambahDompet() {
     if (submitLockRef.current) return;
@@ -1167,7 +1168,9 @@ export default function WalletTabPage() {
                       helperText="Gunakan hanya untuk kebutuhan yang benar-benar mendesak."
                       selected={konfirmasiGunakanDanaDarurat}
                       onPress={() => {
-                        setKonfirmasiGunakanDanaDarurat((prev) => !prev);
+                        setKonfirmasiDaruratUntukId((prev) =>
+                          prev === selectedSumberId ? null : selectedSumberId
+                        );
                         clearMessages();
                       }}
                     />
