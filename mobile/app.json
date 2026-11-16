@@ -27,6 +27,13 @@
         "VIBRATE",
         "WAKE_LOCK",
         "POST_NOTIFICATIONS",
+        "SCHEDULE_EXACT_ALARM",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "WAKE_LOCK",
+        "POST_NOTIFICATIONS",
         "SCHEDULE_EXACT_ALARM"
       ]
     },
@@ -63,6 +70,12 @@
       "eas": {
         "projectId": "5e25dcf5-10bc-45b3-83ca-5d3b01361bd4"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/5e25dcf5-10bc-45b3-83ca-5d3b01361bd4"
     }
   }
 }
