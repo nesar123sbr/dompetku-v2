@@ -41,63 +41,96 @@ export type BundleSinkronisasiCloud = {
   pengingatTagihan: CloudPengingatPayload[];
 };
 
+// Predikat push yang SAMA untuk semua tabel (tanpa filter is_deleted/is_aktif).
+const PREDIKAT_PUSH = `($semua = 1 OR updated_at > $watermark)`;
+
+// Induk (dompet/kategori) ikut di-push jika dirujuk baris anak yang akan di-push,
+// supaya FK cloud (tidak DEFERRABLE) selalu terpenuhi tanpa bergantung pada watermark.
+function indukDirujuk(tabelAnak: string, kolomAnak: string) {
+  return `id IN (SELECT ${kolomAnak} FROM ${tabelAnak} WHERE ${PREDIKAT_PUSH} AND ${kolomAnak} IS NOT NULL)`;
+}
+
 export async function getBundleSinkronisasiLokalSejak(
   db: SQLiteDatabase,
-  watermark: string
+  watermark: string,
 ): Promise<BundleSinkronisasiLokal> {
-  const dompet = (await db.getAllAsync<LocalDompetSync>(
-    `SELECT id, nama, jenis, COALESCE(tipe_dompet, jenis) as tipe_dompet, saldo_saat_ini, COALESCE(saldo_awal, 0) as saldo_awal, is_default, is_aktif, created_at, updated_at
-     FROM dompet WHERE updated_at > $watermark`,
-    { $watermark: watermark }
-  )) ?? [];
+  // Perangkat yang belum pernah sync (watermark kosong/invalid/epoch) harus push SEMUA baris,
+  // termasuk seed berstempel epoch, agar induk FK (dompet/kategori) ada di cloud.
+  const watermarkMs = Date.parse(watermark);
+  const pushSemua = !Number.isFinite(watermarkMs) || watermarkMs <= 0;
+  const params = { $watermark: watermark, $semua: pushSemua ? 1 : 0 };
 
-  const kategoriPemasukan = (await db.getAllAsync<LocalKategoriSync>(
-    `SELECT id, nama, ikon, warna, urutan, is_bawaan, is_aktif, created_at, updated_at
-     FROM kategori_pemasukan WHERE updated_at > $watermark`,
-    { $watermark: watermark }
-  )) ?? [];
+  const dompet =
+    (await db.getAllAsync<LocalDompetSync>(
+      `SELECT id, nama, jenis, COALESCE(tipe_dompet, jenis) as tipe_dompet, saldo_saat_ini, COALESCE(saldo_awal, 0) as saldo_awal, is_default, is_aktif, created_at, updated_at
+     FROM dompet WHERE ${PREDIKAT_PUSH}
+        OR ${indukDirujuk("pemasukan", "dompet_id")}
+        OR ${indukDirujuk("pengeluaran", "dompet_id")}
+        OR ${indukDirujuk("transfer_dompet", "dompet_sumber_id")}
+        OR ${indukDirujuk("transfer_dompet", "dompet_tujuan_id")}
+        OR ${indukDirujuk("pengingat_tagihan", "dompet_id")}
+        OR ${indukDirujuk("koreksi_saldo_dompet", "dompet_id")}`,
+      params,
+    )) ?? [];
 
-  const kategoriPengeluaran = (await db.getAllAsync<LocalKategoriSync>(
-    `SELECT id, nama, kelompok, ikon, warna, urutan, is_bawaan, is_aktif, created_at, updated_at
-     FROM kategori_pengeluaran WHERE updated_at > $watermark`,
-    { $watermark: watermark }
-  )) ?? [];
+  const kategoriPemasukan =
+    (await db.getAllAsync<LocalKategoriSync>(
+      `SELECT id, nama, ikon, warna, urutan, is_bawaan, is_aktif, created_at, updated_at
+     FROM kategori_pemasukan WHERE ${PREDIKAT_PUSH}
+        OR ${indukDirujuk("pemasukan", "kategori_id")}`,
+      params,
+    )) ?? [];
 
-  const pemasukan = (await db.getAllAsync<LocalTransaksiSync>(
-    `SELECT id, dompet_id, kategori_id, judul, catatan, jumlah, tanggal_transaksi, sumber_data, is_deleted, created_at, updated_at
-     FROM pemasukan WHERE updated_at > $watermark`,
-    { $watermark: watermark }
-  )) ?? [];
+  const kategoriPengeluaran =
+    (await db.getAllAsync<LocalKategoriSync>(
+      `SELECT id, nama, kelompok, ikon, warna, urutan, is_bawaan, is_aktif, created_at, updated_at
+     FROM kategori_pengeluaran WHERE ${PREDIKAT_PUSH}
+        OR ${indukDirujuk("pengeluaran", "kategori_id")}
+        OR ${indukDirujuk("anggaran_bulanan", "kategori_id")}`,
+      params,
+    )) ?? [];
 
-  const pengeluaran = (await db.getAllAsync<LocalTransaksiSync>(
-    `SELECT id, dompet_id, kategori_id, judul, catatan, jumlah, tanggal_transaksi, pakai_dana_darurat, sumber_data, is_deleted, created_at, updated_at
-     FROM pengeluaran WHERE updated_at > $watermark`,
-    { $watermark: watermark }
-  )) ?? [];
+  const pemasukan =
+    (await db.getAllAsync<LocalTransaksiSync>(
+      `SELECT id, dompet_id, kategori_id, judul, catatan, jumlah, tanggal_transaksi, sumber_data, is_deleted, created_at, updated_at
+     FROM pemasukan WHERE ($semua = 1 OR updated_at > $watermark)`,
+      params,
+    )) ?? [];
 
-  const transferDompet = (await db.getAllAsync<LocalTransferSync>(
-    `SELECT id, dompet_sumber_id, dompet_tujuan_id, jumlah, tanggal_transfer, catatan, sumber_dana_darurat, created_at, updated_at
-     FROM transfer_dompet WHERE updated_at > $watermark`,
-    { $watermark: watermark }
-  )) ?? [];
+  const pengeluaran =
+    (await db.getAllAsync<LocalTransaksiSync>(
+      `SELECT id, dompet_id, kategori_id, judul, catatan, jumlah, tanggal_transaksi, pakai_dana_darurat, sumber_data, is_deleted, created_at, updated_at
+     FROM pengeluaran WHERE ($semua = 1 OR updated_at > $watermark)`,
+      params,
+    )) ?? [];
 
-  const anggaranBulanan = (await db.getAllAsync<LocalAnggaranSync>(
-    `SELECT id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
-     FROM anggaran_bulanan WHERE updated_at > $watermark`,
-    { $watermark: watermark }
-  )) ?? [];
+  const transferDompet =
+    (await db.getAllAsync<LocalTransferSync>(
+      `SELECT id, dompet_sumber_id, dompet_tujuan_id, jumlah, tanggal_transfer, catatan, sumber_dana_darurat, created_at, updated_at
+     FROM transfer_dompet WHERE ($semua = 1 OR updated_at > $watermark)`,
+      params,
+    )) ?? [];
 
-  const koreksiSaldoDompet = (await db.getAllAsync<LocalKoreksiSync>(
-    `SELECT id, dompet_id, nama_dompet_snapshot, saldo_sebelum, saldo_sesudah, selisih, catatan, sumber, created_at, updated_at
-     FROM koreksi_saldo_dompet WHERE updated_at > $watermark`,
-    { $watermark: watermark }
-  )) ?? [];
+  const anggaranBulanan =
+    (await db.getAllAsync<LocalAnggaranSync>(
+      `SELECT id, bulan, nama, kategori_id, batas_nominal, ambang_peringatan_persen, is_aktif, created_at, updated_at
+     FROM anggaran_bulanan WHERE ($semua = 1 OR updated_at > $watermark)`,
+      params,
+    )) ?? [];
 
-  const pengingatTagihan = (await db.getAllAsync<LocalPengingatSync>(
-    `SELECT id, judul, catatan, nominal, dompet_id, tanggal_jatuh_tempo, substr(jam_pengingat, 1, 5) as jam_pengingat, status, pengulangan, notifikasi_diaktifkan, created_at, updated_at
-     FROM pengingat_tagihan WHERE updated_at > $watermark`,
-    { $watermark: watermark }
-  )) ?? [];
+  const koreksiSaldoDompet =
+    (await db.getAllAsync<LocalKoreksiSync>(
+      `SELECT id, dompet_id, nama_dompet_snapshot, saldo_sebelum, saldo_sesudah, selisih, catatan, sumber, created_at, updated_at
+     FROM koreksi_saldo_dompet WHERE ($semua = 1 OR updated_at > $watermark)`,
+      params,
+    )) ?? [];
+
+  const pengingatTagihan =
+    (await db.getAllAsync<LocalPengingatSync>(
+      `SELECT id, judul, catatan, nominal, dompet_id, tanggal_jatuh_tempo, substr(jam_pengingat, 1, 5) as jam_pengingat, status, pengulangan, notifikasi_diaktifkan, created_at, updated_at
+     FROM pengingat_tagihan WHERE ($semua = 1 OR updated_at > $watermark)`,
+      params,
+    )) ?? [];
 
   return {
     dompet,
@@ -114,7 +147,7 @@ export async function getBundleSinkronisasiLokalSejak(
 
 export async function terapkanBundleCloudKeSQLite(
   db: SQLiteDatabase,
-  bundle: BundleSinkronisasiCloud
+  bundle: BundleSinkronisasiCloud,
 ): Promise<void> {
   await db.withExclusiveTransactionAsync(async (txn) => {
     // Urutan: dompet, kategori, anggaran, transaksi, transfer, koreksi, pengingat.
@@ -137,7 +170,7 @@ export async function terapkanBundleCloudKeSQLite(
            is_default = excluded.is_default,
            is_aktif = excluded.is_aktif,
            updated_at = excluded.updated_at
-         WHERE excluded.updated_at > dompet.updated_at`
+         WHERE excluded.updated_at > dompet.updated_at`,
       );
       try {
         for (const item of bundle.dompet) {
@@ -174,7 +207,7 @@ export async function terapkanBundleCloudKeSQLite(
            is_bawaan = excluded.is_bawaan,
            is_aktif = excluded.is_aktif,
            updated_at = excluded.updated_at
-         WHERE excluded.updated_at > kategori_pemasukan.updated_at`
+         WHERE excluded.updated_at > kategori_pemasukan.updated_at`,
       );
       try {
         for (const item of bundle.kategoriPemasukan) {
@@ -212,7 +245,7 @@ export async function terapkanBundleCloudKeSQLite(
            is_bawaan = excluded.is_bawaan,
            is_aktif = excluded.is_aktif,
            updated_at = excluded.updated_at
-         WHERE excluded.updated_at > kategori_pengeluaran.updated_at`
+         WHERE excluded.updated_at > kategori_pengeluaran.updated_at`,
       );
       try {
         for (const item of bundle.kategoriPengeluaran) {
@@ -248,7 +281,7 @@ export async function terapkanBundleCloudKeSQLite(
          WHERE bulan = $bulan
            AND COALESCE(kategori_id, '__semua__') = COALESCE($kategori_id, '__semua__')
            AND id <> $id
-           AND is_aktif = 1`
+           AND is_aktif = 1`,
       );
 
       const stmt = await txn.prepareAsync(
@@ -267,7 +300,7 @@ export async function terapkanBundleCloudKeSQLite(
            ambang_peringatan_persen = excluded.ambang_peringatan_persen,
            is_aktif = excluded.is_aktif,
            updated_at = excluded.updated_at
-         WHERE excluded.updated_at > anggaran_bulanan.updated_at`
+         WHERE excluded.updated_at > anggaran_bulanan.updated_at`,
       );
       try {
         for (const item of sortedAnggaran) {
@@ -318,7 +351,7 @@ export async function terapkanBundleCloudKeSQLite(
            sumber_data = excluded.sumber_data,
            is_deleted = excluded.is_deleted,
            updated_at = excluded.updated_at
-         WHERE excluded.updated_at > pemasukan.updated_at`
+         WHERE excluded.updated_at > pemasukan.updated_at`,
       );
       try {
         for (const item of bundle.pemasukan) {
@@ -362,7 +395,7 @@ export async function terapkanBundleCloudKeSQLite(
            sumber_data = excluded.sumber_data,
            is_deleted = excluded.is_deleted,
            updated_at = excluded.updated_at
-         WHERE excluded.updated_at > pengeluaran.updated_at`
+         WHERE excluded.updated_at > pengeluaran.updated_at`,
       );
       try {
         for (const item of bundle.pengeluaran) {
@@ -404,7 +437,7 @@ export async function terapkanBundleCloudKeSQLite(
            catatan = excluded.catatan,
            sumber_dana_darurat = excluded.sumber_dana_darurat,
            updated_at = excluded.updated_at
-         WHERE excluded.updated_at > transfer_dompet.updated_at`
+         WHERE excluded.updated_at > transfer_dompet.updated_at`,
       );
       try {
         for (const item of bundle.transferDompet) {
@@ -435,7 +468,7 @@ export async function terapkanBundleCloudKeSQLite(
            $id, $dompet_id, $nama_dompet_snapshot, $saldo_sebelum, $saldo_sesudah,
            $selisih, $catatan, $sumber, $created_at, $updated_at
          )
-         ON CONFLICT(id) DO NOTHING`
+         ON CONFLICT(id) DO NOTHING`,
       );
       try {
         for (const item of bundle.koreksiSaldoDompet) {
@@ -478,7 +511,7 @@ export async function terapkanBundleCloudKeSQLite(
            pengulangan = excluded.pengulangan,
            notifikasi_diaktifkan = excluded.notifikasi_diaktifkan,
            updated_at = excluded.updated_at
-         WHERE excluded.updated_at > pengingat_tagihan.updated_at`
+         WHERE excluded.updated_at > pengingat_tagihan.updated_at`,
       );
       try {
         for (const item of bundle.pengingatTagihan) {
@@ -503,4 +536,3 @@ export async function terapkanBundleCloudKeSQLite(
     }
   });
 }
-
