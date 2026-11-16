@@ -9,6 +9,8 @@ import {
   getPemilikDataLokal,
   hapusSemuaDataLokal,
   MODE_PENGGUNAAN,
+  PENGATURAN_KEY,
+  setNilaiPengaturanTeks,
   setPemilikDataLokal,
   turunkanModeSetelahKeluarAkun,
 } from "@/database";
@@ -47,8 +49,39 @@ function getFriendlyAuthErrorMessage(error: unknown) {
     return fallback;
   }
 
+  const code =
+    "code" in error && typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code.toLowerCase()
+      : "";
   const message = error.message || fallback;
   const lower = message.toLowerCase();
+
+  if (
+    code === "weak_password" ||
+    lower.includes("weak_password") ||
+    lower.includes("weak") ||
+    lower.includes("leaked")
+  ) {
+    return "Password ini terlalu umum atau pernah bocor di internet. Pakai password lain yang lebih unik.";
+  }
+
+  if (
+    code === "over_email_send_rate_limit" ||
+    lower.includes("over_email_send_rate_limit") ||
+    lower.includes("email rate limit exceeded") ||
+    lower.includes("for security purposes, you can only request this")
+  ) {
+    return "Terlalu sering meminta kode. Tunggu beberapa saat lalu coba lagi.";
+  }
+
+  if (
+    code === "otp_expired" ||
+    lower.includes("otp_expired") ||
+    lower.includes("token has expired") ||
+    lower.includes("expired")
+  ) {
+    return "Kode sudah kedaluwarsa. Kirim ulang kode lalu coba lagi.";
+  }
 
   if (lower.includes("project paused") || lower.includes("540")) {
     return "Project Supabase kamu sedang pause. Unpause dulu dari dashboard Supabase, lalu coba lagi.";
@@ -191,7 +224,7 @@ export async function catatSessionAktifKePengaturanLokal(
   const hasLocalData = await getApakahAdaDataLokalBermakna(db);
 
   if (hasLocalData && owner && owner !== user.id) {
-    await hapusSemuaDataLokal(db);
+    return getInfoAkunSupabaseLokal(db);
   }
 
   await setPemilikDataLokal(db, user.id);
@@ -483,6 +516,9 @@ export async function hapusAkunPenggunaCloud(
       await hapusSemuaDataLokal(db);
       return MODE_PENGGUNAAN.NONE;
     }
+
+    await setPemilikDataLokal(db, null);
+    await setNilaiPengaturanTeks(db, PENGATURAN_KEY.CLOUD_SYNC_CURSOR, "");
 
     return await turunkanModeSetelahKeluarAkun(db);
   } catch (error) {

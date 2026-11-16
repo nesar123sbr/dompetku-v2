@@ -123,19 +123,25 @@ ReactNativeJS: 'Global ErrorBoundary caught error:', { [Error: Error code 1: no 
   - Pencegahan pembaruan mundur (*backdated timestamp attack*) dengan fungsi `LEAST(EXCLUDED.updated_at, timezone('utc', now()))`.
   - Pembatasan hak eksekusi: `REVOKE EXECUTE ... FROM public, anon;` dan `GRANT EXECUTE ... TO authenticated;`.
 
-### 6.2 Penghapusan Akun Play Store & Data Berjenjang (`20261106100000_000006_delete_account_rpc.sql`)
-- Membuat fungsi database RPC `public.hapus_semua_data_pengguna(target_user_id UUID)` dengan mode `SECURITY DEFINER`.
+### 6.2 Penghapusan Akun Play Store & Data Berjenjang (`20261106100000_000006_delete_account_rpc.sql` & `20261116100000_000008_security_and_sync_fixes.sql`)
+- Membuat fungsi database RPC `public.hapus_semua_data_pengguna(target_user_id UUID)` dengan mode `SECURITY DEFINER` dan `SET search_path = ''`.
 - Menghapus data secara berjenjang mengikuti urutan aman Foreign Key (*transaksi → transfer → koreksi → pengingat → anggaran → kategori → dompet → profil*) untuk mencegah pelanggaran `ON DELETE RESTRICT` saat user dihapus dari `auth.users`.
-- Memberikan akses fungsi hanya kepada `authenticated` dan `service_role`.
+- Pada migrasi `000008`, hak eksekusi fungsi ini dikunci ketat hanya untuk `service_role` (`REVOKE ALL ... FROM PUBLIC, anon, authenticated; GRANT EXECUTE ... TO service_role;`) dan menghapus pengecekan `auth.uid()` yang sebelumnya meloloskan `NULL`.
+
+### 6.2b Hardening Lanjutan Sinkronisasi & Index Cloud (`20261116090000_000007_prune_unused_query_indexes.sql` & `20261116100000_000008_security_and_sync_fixes.sql`)
+- Menghapus 8 index kueri cloud-side yang tidak digunakan (`000007`) serta 4 index FK duplikat warisan `000001` (`idx_transfer_fk_sumber`, `idx_transfer_fk_tujuan`, `idx_koreksi_fk_dompet`, `idx_pengingat_fk_dompet` di `000008`).
+- Memperbarui partial unique index `idx_anggaran_aktif_unik` agar memakai `COALESCE(kategori_id_lokal, '__semua__')` setelah menonaktifkan duplikat aktif.
+- Memperbarui `public.sync_bundle(jsonb)` agar perbandingan LWW memakai strict `<` (`WHERE public.<tabel>.updated_at < LEAST(...)`) sehingga pengiriman ulang baris berstempel waktu sama tidak memicu *timestamp bump loop*, serta membatasi deaktivasi anggaran hanya pada item payload dengan `is_aktif = true`.
 
 ### 6.3 Standar Keamanan Otentikasi (`supabase/config.toml`)
 - Mengubah `minimum_password_length` dari `6` menjadi `8` karakter sesuai standar keamanan Google Play Store dan OWASP.
+- **Peringatan `config.toml`**: Konfigurasi lokal di `supabase/config.toml` memuat `enable_confirmations = false` yang berbeda dari lingkungan produksi. Jangan menjalankan `supabase config push` tanpa memeriksa diff agar pengaturan verifikasi email produksi tidak tertimpa.
 
 ### 6.4 Edge Function `delete-account` (`supabase/functions/delete-account/index.ts`)
 - Menerapkan fungsi Deno/Supabase Edge Function untuk memproses permintaan hapus akun secara mandiri:
   1. Memvalidasi token JWT pengguna aktif.
   2. Memanggil RPC `hapus_semua_data_pengguna` untuk membersihkan basis data.
-  3. Memanggil `auth.admin.deleteUser(user.id)` menggunakan service role key.
+  3. Memanggil `auth.admin.deleteUser(user.id)` menggunakan service role key (variabel `SUPABASE_SERVICE_ROLE_KEY` otomatis di-inject oleh runtime Supabase; prefix `SUPABASE_` bersifat reserved dan tidak diset via `supabase secrets set`).
 
 ---
 
@@ -183,18 +189,21 @@ Pada **Supabase Dashboard** (`https://supabase.com/dashboard/project/<project-re
    - Masuk ke menu **Project Settings** > **Authentication** > **SMTP Settings**.
    - Aktifkan **Enable Custom SMTP** dan gunakan penyedia terpercaya seperti Resend, SendGrid, atau Mailgun.
    - *Peringatan*: Layanan bawaan Supabase dibatasi hanya 3 email per jam, yang dapat menyebabkan kegagalan penerimaan OTP pada pengguna sungguhan.
-2. **Template Email OTP**:
-   - Masuk ke **Authentication** > **Email Templates** > **Confirm signup** dan **Magic Link**.
-   - Pastikan teks email menyertakan tag token 6 digit:
+2. **Template Email OTP & Reset Password**:
+   - Masuk ke **Authentication** > **Email Templates** > **Confirm signup**, **Magic Link**, dan **Reset Password**.
+   - Pastikan seluruh template tersebut menyertakan tag token 6 digit `{{ .Token }}` (khususnya **Reset Password**, sebab `reset-password.tsx` memverifikasi kode melalui `verifyOtp` dengan tipe `recovery`):
      ```html
      <h2>Kode Verifikasi DompetKu:</h2>
      <p style="font-size: 24px; font-weight: bold; letter-spacing: 4px;">{{ .Token }}</p>
      ```
-3. **Rate Limiting**:
+3. **Leaked Password Protection & Panjang Minimum Sandi**:
+   - Pada menu **Authentication** > **Providers** > **Email** (atau **Policies**), pastikan panjang minimum password diatur ke **8 karakter**.
+   - Aktifkan toggle **Leaked Password Protection** di dashboard Supabase (fitur khusus paket **Pro ke atas**, tidak dikelola dari kode atau `config.toml`).
+4. **Rate Limiting**:
    - Pada menu **Authentication** > **Rate Limits**, pastikan batas *Email OTP* disesuaikan dengan volume pengguna yang diharapkan.
 
 ### 9.3 Penerapan Migrasi & Edge Function ke Server Remote
-Jalankan perintah berikut menggunakan terminal di lingkungan pemilik proyek:
+Jalankan perintah berikut menggunakan terminal di lingkungan pemilik proyek (jangan jalankan `supabase config push` tanpa memeriksa diff karena `enable_confirmations = false` di `config.toml` lokal berbeda dari produksi):
 ```bash
 # 1. Login ke Supabase CLI
 npx supabase login
@@ -202,10 +211,10 @@ npx supabase login
 # 2. Tautkan dengan project remote Supabase kamu
 npx supabase link --project-ref <your-project-ref>
 
-# 3. Terapkan migrasi skema dan RPC terbaru (000005 & 000006)
+# 3. Terapkan migrasi skema dan RPC terbaru (hingga 000008)
 npx supabase db push
 
-# 4. Deploy Edge Function hapus akun
+# 4. Deploy Edge Function hapus akun (SUPABASE_SERVICE_ROLE_KEY auto-injected oleh Supabase)
 npx supabase functions deploy delete-account
 ```
 

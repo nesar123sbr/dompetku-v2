@@ -64,6 +64,7 @@ Dokumen ini mendokumentasikan prinsip-prinsip arsitektural, pola perancangan (*d
   ```sql
   WHERE excluded.updated_at > <tabel>.updated_at
   ```
+  Demikian pula di sisi cloud (`sync_bundle`), upsert menggunakan perbandingan ketat `WHERE public.<tabel>.updated_at < LEAST(EXCLUDED.updated_at, timezone('utc', now()))` sehingga pengiriman ulang baris dengan `updated_at` yang sama tidak memicu pembaruan semu (*no-op timestamp bump*) pada trigger `set_updated_at`.
   Khusus untuk tabel `dompet`, `saldo_saat_ini` tidak pernah ditimpa langsung dari cloud; melainkan dihitung ulang secara matematis dari riwayat transaksi yang masuk.
 - **Payload Batching**: Jika mutasi offline melebihi 300 baris, payload dipecah menjadi batch berukuran maksimal 300 entitas berurutan: entitas master (profil, dompet, kategori) dikirim lebih dahulu untuk menjamin integritas relasi (*Foreign Keys*).
 - **Service Mutex**: Panggilan sinkronisasi ganda (*concurrent calls*) digabungkan ke promise aktif yang sama, mencegah konflik tulis paralel.

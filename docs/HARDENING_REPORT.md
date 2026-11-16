@@ -221,15 +221,27 @@ Seluruh fase telah melalui verifikasi `npm run typecheck`, `npm run lint`, `npm 
 Karena aturan keamanan melarang eksekusi perintah remote (`supabase db push`/`deploy`) secara langsung dari AI assistant, langkah berikut harus dijalankan secara manual oleh administrator project:
 
 ### Langkah 1: Eksekusi File Migrasi SQL
-Buka **Supabase Dashboard** > **SQL Editor**, lalu jalankan dua file migrasi berikut secara berurutan:
+Buka **Supabase Dashboard** > **SQL Editor**, lalu jalankan file migrasi berikut secara berurutan:
 
-1. **Migrasi Sinkronisasi Hardening**:
+1. **Migrasi Sinkronisasi Hardening (`000005`)**:
    - File: `supabase/migrations/20261106090000_000005_sync_core_hardening.sql`
    - Tindakan: Menambahkan kolom `server_updated_at`, trigger otomatis, index performa, dan memperbarui RPC `sync_bundle`.
 
-2. **Migrasi Prosedur Hapus Akun**:
+2. **Migrasi Prosedur Hapus Akun (`000006`)**:
    - File: `supabase/migrations/20261106100000_000006_delete_account_rpc.sql`
    - Tindakan: Mendaftarkan fungsi RPC `public.hapus_semua_data_pengguna(UUID)`.
+
+3. **Migrasi Pemangkasan Index Tidak Terpakai (`000007`)**:
+   - File: `supabase/migrations/20261116090000_000007_prune_unused_query_indexes.sql`
+   - Tindakan: Menghapus 8 index pola query cloud-side yang tidak pernah dipakai aplikasi, sembari mempertahankan covering index Foreign Key.
+
+4. **Migrasi Perbaikan Keamanan & Sinkronisasi (`000008`)**:
+   - File: `supabase/migrations/20261116100000_000008_security_and_sync_fixes.sql`
+   - Tindakan:
+     - Mengunci RPC `public.hapus_semua_data_pengguna(uuid)` (`SET search_path = ''`, menolak `target_user_id IS NULL`, mencabut akses `PUBLIC, anon, authenticated`, dan hanya memberikan `GRANT EXECUTE` ke `service_role`).
+     - Menghapus 4 index FK duplikat warisan `000001` (`idx_transfer_fk_sumber`, `idx_transfer_fk_tujuan`, `idx_koreksi_fk_dompet`, `idx_pengingat_fk_dompet`).
+     - Menonaktifkan duplikat anggaran aktif dan memperbarui partial unique index `idx_anggaran_aktif_unik` dengan `COALESCE(kategori_id_lokal, '__semua__')` agar anggaran umum (`NULL`) ikut terlindungi dari duplikasi.
+     - Memperbarui RPC `public.sync_bundle(jsonb)` agar klausa `WHERE` LWW memakai strict `<` (mencegah *timestamp bump loop* saat re-push baris yang tidak berubah) dan membatasi subselect deaktivasi anggaran hanya untuk item payload yang aktif (`is_aktif = true`).
 
 ### Langkah 2: Deploy Supabase Edge Function
 Jalankan perintah berikut menggunakan Supabase CLI pada terminal komputer Anda:
@@ -243,13 +255,10 @@ supabase link --project-ref <PROJECT_ID_ANDA>
 # Deploy edge function delete-account
 supabase functions deploy delete-account --no-verify-jwt
 ```
-*(Catatan: Flag `--no-verify-jwt` dapat digunakan jika gateway Supabase meneruskan otentikasi Bearer ke header fungsi, karena fungsi di dalam kode telah memverifikasi JWT pemanggil secara eksplisit).*
+*(Catatan: Variabel lingkungan bawaan `SUPABASE_URL`, `SUPABASE_ANON_KEY`, dan `SUPABASE_SERVICE_ROLE_KEY` otomatis di-inject oleh platform Supabase Edge Runtime; prefix `SUPABASE_` bersifat reserved sehingga tidak perlu dan tidak boleh diset manual melalui `supabase secrets set`).*
 
-### Langkah 3: Konfigurasi Secrets / Environment Variables
-Pastikan secret service role tersedia untuk Edge Function:
-```bash
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY_ANDA>
-```
+> **Peringatan Penting tentang `supabase/config.toml`**:  
+> Konfigurasi lokal di `supabase/config.toml` (seperti `enable_confirmations = false` untuk kemudahan dev lokal) berbeda dari konfigurasi produksi di Supabase Cloud. **JANGAN** menjalankan `supabase config push` tanpa memeriksa diff secara teliti agar tidak menimpa pengaturan autentikasi produksi.
 
 ---
 
@@ -257,12 +266,13 @@ supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY_ANDA>
 
 Pastikan pengaturan berikut telah aktif di dashboard Supabase (**Authentication** > **Settings**):
 
-- [ ] **Template Email Verifikasi / OTP**:
-  - Masuk ke menu **Authentication** > **Email Templates** > **Confirm signup**.
-  - Pastikan isi template memuat kode token: `{{ .Token }}` (bukan hanya tautan konfirmasi `{{ .ConfirmationURL }}`).
-- [ ] **Panjang Minimum Password**:
-  - Masuk ke menu **Authentication** > **Providers** > **Email**.
+- [ ] **Template Email Verifikasi / OTP & Reset Password**:
+  - Masuk ke menu **Authentication** > **Email Templates** > **Confirm signup** dan **Reset Password**.
+  - Pastikan kedua template memuat kode token 6 digit `{{ .Token }}` (bukan hanya tautan `{{ .ConfirmationURL }}`), karena baik halaman verifikasi pendaftaran (`verify-email.tsx`) maupun pemulihan sandi (`reset-password.tsx` dengan `verifyOtp` bertipe `recovery`) memverifikasi kode OTP secara langsung di aplikasi.
+- [ ] **Panjang Minimum Password & Leaked Password Protection**:
+  - Masuk ke menu **Authentication** > **Providers** > **Email** (atau **Policies**).
   - Atur **Minimum password length** minimal 8 karakter.
+  - Aktifkan toggle **Leaked Password Protection** (*Prevent use of leaked passwords* via HaveIBeenPwned) di dashboard. Catatan: fitur ini merupakan pengaturan dashboard khusus paket **Supabase Pro ke atas** (tidak diatur melalui kode atau `config.toml`).
 - [ ] **Pengaturan SMTP Kustom (Direkomendasikan untuk Rilis)**:
   - Gunakan custom SMTP (misalnya Resend, SendGrid, atau Mailgun) untuk menghindari pembatasan pengiriman email bawaan Supabase (3 email per jam).
 - [ ] **Rate Limiting**:

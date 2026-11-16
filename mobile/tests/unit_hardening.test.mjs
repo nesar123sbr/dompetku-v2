@@ -142,7 +142,7 @@ test("hitungSaldoDompet: menghitung saldo akhir sesuai seluruh riwayat mutasi", 
 });
 
 // ============================================================================
-// 3. LWW (LAST-WRITE-WINS) COMPARATOR GUARD
+// 3. LWW (LAST-WRITE-WINS) COMPARATOR GUARD (LOKAL & CLOUD)
 // ============================================================================
 function shouldCloudOverwriteLocal(localUpdatedAt, cloudUpdatedAt) {
   const localMs = Date.parse(localUpdatedAt);
@@ -150,6 +150,16 @@ function shouldCloudOverwriteLocal(localUpdatedAt, cloudUpdatedAt) {
   // Di SQLite repo: WHERE excluded.updated_at > table.updated_at
   // Cloud HANYA menang jika cloud timestamp strictly greater.
   return cloudMs > localMs;
+}
+
+function shouldPushUpdateCloud(cloudUpdatedAt, incomingUpdatedAt, serverNowIso) {
+  const cloudMs = Date.parse(cloudUpdatedAt);
+  const incomingMs = Date.parse(incomingUpdatedAt);
+  const nowMs = serverNowIso ? Date.parse(serverNowIso) : Infinity;
+  const clampedIncomingMs = Math.min(incomingMs, nowMs);
+  // Di RPC sync_bundle (000008): WHERE public.<tabel>.updated_at < LEAST(EXCLUDED.updated_at, timezone('utc', now()))
+  // Push HANYA meng-update cloud bila timestamp cloud strictly smaller (<).
+  return cloudMs < clampedIncomingMs;
 }
 
 test("LWW guard: cloud hanya menimpa baris lokal bila cloud strictly newer", () => {
@@ -164,6 +174,21 @@ test("LWW guard: cloud hanya menimpa baris lokal bila cloud strictly newer", () 
 
   // Timestamp identik: JANGAN timpa lokal (false)
   assert.equal(shouldCloudOverwriteLocal(t1, t1), false);
+});
+
+test("LWW push cloud (sync_bundle): push dengan updated_at SAMA tidak meng-update baris cloud (strict <)", () => {
+  const t1 = "2026-11-06T10:00:00.000Z";
+  const t2 = "2026-11-06T10:05:00.000Z";
+  const serverNow = "2026-11-06T10:10:00.000Z";
+
+  // Incoming lebih baru dari cloud: update cloud (true)
+  assert.equal(shouldPushUpdateCloud(t1, t2, serverNow), true);
+
+  // Incoming SAMA dengan cloud (re-push baris tidak berubah / induk FK): JANGAN update (false)
+  assert.equal(shouldPushUpdateCloud(t1, t1, serverNow), false);
+
+  // Incoming lebih tua dari cloud: JANGAN update (false)
+  assert.equal(shouldPushUpdateCloud(t2, t1, serverNow), false);
 });
 
 // ============================================================================

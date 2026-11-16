@@ -8,14 +8,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { AppState } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import type { Session, User } from "@supabase/supabase-js";
 
 import {
   MODE_PENGGUNAAN,
+  getApakahAdaDataLokalBermakna,
   getInfoAkunSupabaseLokal,
   getModePenggunaan,
+  getPemilikDataLokal,
   setModePenggunaan,
   type AkunSupabaseLokalInfo,
 } from "@/database";
@@ -48,6 +49,7 @@ type AuthContextValue = {
   canAccessApp: boolean;
   isRecoveringPassword: boolean;
   setIsRecoveringPassword: (value: boolean) => void;
+  isLinkingAccount: boolean;
   akunLokal: AkunSupabaseLokalInfo | null;
 
   enterGuestMode: () => Promise<void>;
@@ -120,6 +122,7 @@ const AuthContext = createContext<AuthContextValue>({
   canAccessApp: false,
   isRecoveringPassword: false,
   setIsRecoveringPassword: () => {},
+  isLinkingAccount: false,
   akunLokal: EMPTY_AKUN_LOKAL,
 
   enterGuestMode: async () => {},
@@ -228,6 +231,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   );
   const isRecoveringPasswordRef = useRef(false);
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
+  const isLinkingAccountRef = useRef(false);
+  const [isLinkingAccount, setIsLinkingAccount] = useState(false);
 
   // 👇 HOTFIX 0.1: Duplicate getModePenggunaan dihapus
   const refreshLocalState = useCallback(async () => {
@@ -334,6 +339,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return;
       }
 
+      if (isLinkingAccountRef.current) {
+        return;
+      }
+
       setSession(nextSession ?? null);
       setIsRemoteReady(true);
     });
@@ -346,35 +355,34 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) {
-      return;
-    }
-
-    const client = supabase;
-
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        client.auth.startAutoRefresh();
-      } else {
-        client.auth.stopAutoRefresh();
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-
-  useEffect(() => {
     let isMounted = true;
 
     async function syncSessionToLocalState() {
-      if (!isLocalReady) {
+      if (!isLocalReady || isLinkingAccount || isLinkingAccountRef.current) {
         return;
       }
 
       try {
         if (session?.user) {
+          const owner = await getPemilikDataLokal(db);
+          const hasLocalData = await getApakahAdaDataLokalBermakna(db);
+
+          if (hasLocalData && owner && owner !== session.user.id) {
+            if (supabase) {
+              await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+            }
+            if (!isMounted) return;
+            setSession(null);
+
+            const currentMode = await getModePenggunaan(db);
+            const info = await getInfoAkunSupabaseLokal(db);
+
+            if (!isMounted) return;
+            setLocalMode(currentMode);
+            setAkunLokal(info);
+            return;
+          }
+
           const info = await catatSessionAktifKePengaturanLokal(
             db,
             session.user
@@ -407,7 +415,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => {
       isMounted = false;
     };
-  }, [db, isLocalReady, session]);
+  }, [db, isLinkingAccount, isLocalReady, session]);
 
   const enterGuestMode = useCallback(async () => {
     await setModePenggunaan(db, MODE_PENGGUNAAN.GUEST);
@@ -425,30 +433,43 @@ export function AuthProvider({ children }: AuthProviderProps) {
       email: string;
       password: string;
     }) => {
-      const result = await daftarAkunDenganEmail(db, payload);
+      isLinkingAccountRef.current = true;
+      setIsLinkingAccount(true);
+      try {
+        const result = await daftarAkunDenganEmail(db, payload);
 
-      if (result.session) {
-        setSession(result.session);
+        if (result.session) {
+          setSession(result.session);
+        }
+
+        return result;
+      } finally {
+        isLinkingAccountRef.current = false;
+        setIsLinkingAccount(false);
+        await refreshLocalState();
       }
-
-      await refreshLocalState();
-
-      return result;
     },
     [db, refreshLocalState]
   );
 
   const verifyEmailOtp = useCallback(
     async (payload: { email: string; token: string }) => {
-      const result = await verifikasiOtpEmailDanHubungkanDataLokal(
-        db,
-        payload
-      );
+      isLinkingAccountRef.current = true;
+      setIsLinkingAccount(true);
+      try {
+        const result = await verifikasiOtpEmailDanHubungkanDataLokal(
+          db,
+          payload
+        );
 
-      setSession(result.session);
-      await refreshLocalState();
+        setSession(result.session);
 
-      return result;
+        return result;
+      } finally {
+        isLinkingAccountRef.current = false;
+        setIsLinkingAccount(false);
+        await refreshLocalState();
+      }
     },
     [db, refreshLocalState]
   );
@@ -459,15 +480,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const signInWithPassword = useCallback(
     async (payload: { email: string; password: string }) => {
-      const result = await masukDenganPasswordDanHubungkanDataLokal(
-        db,
-        payload
-      );
+      isLinkingAccountRef.current = true;
+      setIsLinkingAccount(true);
+      try {
+        const result = await masukDenganPasswordDanHubungkanDataLokal(
+          db,
+          payload
+        );
 
-      setSession(result.session);
-      await refreshLocalState();
+        setSession(result.session);
 
-      return result;
+        return result;
+      } finally {
+        isLinkingAccountRef.current = false;
+        setIsLinkingAccount(false);
+        await refreshLocalState();
+      }
     },
     [db, refreshLocalState]
   );
@@ -584,6 +612,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       canAccessApp,
       isRecoveringPassword,
       setIsRecoveringPassword,
+      isLinkingAccount,
       akunLokal,
 
       enterGuestMode,
@@ -609,6 +638,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isOfflineSession,
     canAccessApp,
     isRecoveringPassword,
+    isLinkingAccount,
     akunLokal,
     enterGuestMode,
     exitGuestMode,

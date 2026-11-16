@@ -27,13 +27,6 @@
         "VIBRATE",
         "WAKE_LOCK",
         "POST_NOTIFICATIONS",
-        "SCHEDULE_EXACT_ALARM",
-        "INTERNET",
-        "ACCESS_NETWORK_STATE",
-        "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE",
-        "WAKE_LOCK",
-        "POST_NOTIFICATIONS",
         "SCHEDULE_EXACT_ALARM"
       ]
     },

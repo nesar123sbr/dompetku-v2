@@ -90,6 +90,7 @@ export async function simpanAnggaranBulanan(
         FROM anggaran_bulanan
         WHERE bulan = $bulan
           AND kategori_id IS $kategori_id
+        ORDER BY is_aktif DESC, updated_at DESC
         LIMIT 1
       `,
       {
