@@ -43,7 +43,8 @@ Seluruh fase telah melalui verifikasi `npm run typecheck`, `npm run lint`, `npm 
   - `mobile/package.json` & `mobile/package-lock.json`: Menghapus dependensi `xlsx`.
   - `.gitattributes`: Mengonfigurasi normalisasi EOL (LF untuk kode JS/TS/SQL, CRLF untuk file script Windows `.bat`/`.cmd`, binary untuk font/gambar/sqlite).
 * **Hasil Verifikasi**:
-  - `npm audit --omit=dev` di folder `mobile/` menunjukkan **0 vulnerabilities**.
+  - Pada saat penyelesaian Fase 0, `npm audit --omit=dev` di folder `mobile/` menunjukkan **0 vulnerabilities**.
+  - **Status terkini (per audit 16 November 2026, `expo@58.0.25`)**: setelah pembaruan `brace-expansion` ke `1.1.22` melalui `package-lock.json` (0 high), `npm audit` melaporkan **8 moderate** dan `npm audit --omit=dev` melaporkan **3 moderate** (rantai `minimatch@10.2.6` → `@expo/fingerprint@0.21.10` → `expo@58.0.25`, advisory `GHSA-g3hv-75wg-m249`). Seluruhnya merupakan komponen *tooling* build/dev yang tidak masuk ke bundle APK; perbaikan sengaja ditunda menunggu rilis upstream karena butuh major bump ke `minimatch >=11.0.1` (dan `npm audit fix --force` tidak digunakan karena menyarankan downgrade ke `expo@52.0.49`). Lihat rincian pada `docs/AUDIT_REPORT.md` Bagian 12.
 
 ---
 

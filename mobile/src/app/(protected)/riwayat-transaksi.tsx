@@ -855,6 +855,12 @@ export default function RiwayatTransaksiPage() {
     keyword,
   ]);
 
+  const loadFirstPageRef = useRef(loadFirstPage);
+
+  useEffect(() => {
+    loadFirstPageRef.current = loadFirstPage;
+  }, [loadFirstPage]);
+
   // Effect untuk pembaruan filter (keyword, jenis, rentang tanggal)
   useEffect(() => {
     if (isFirstMountRef.current) return;
@@ -870,16 +876,16 @@ export default function RiwayatTransaksiPage() {
   useFocusEffect(
     useCallback(() => {
       if (isFirstMountRef.current) {
-        loadFirstPage(true);
+        loadFirstPageRef.current(true);
         isFirstMountRef.current = false;
       } else {
-        loadFirstPage(false);
+        loadFirstPageRef.current(false);
       }
 
       return () => {
         requestIdRef.current += 1;
       };
-    }, [loadFirstPage]),
+    }, []),
   );
 
   const handleBack = useCallback(() => {

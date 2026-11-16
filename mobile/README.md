@@ -14,9 +14,9 @@ DompetKu v2 adalah aplikasi pencatat keuangan pribadi berbasis offline-first yan
 
 ## Teknologi
 
-- **Framework**: Expo (~58.0.23) & React Native (0.88.1)
-- **Routing**: Expo Router (~58.0.30)
-- **Database Lokal**: expo-sqlite (~58.0.15)
+- **Framework**: Expo (^58.0.25) & React Native (0.88.1)
+- **Routing**: Expo Router (~58.0.31)
+- **Database Lokal**: expo-sqlite (~58.0.17)
 - **Backend & Auth**: Supabase (@supabase/supabase-js ^2.101.1)
 
 ## Cara Menjalankan

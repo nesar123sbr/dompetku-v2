@@ -257,9 +257,9 @@ Berikut adalah skenario uji yang dapat dijalankan pada perangkat Android fisik u
 
 ## 11. Audit Linting & Resolusi Peringatan React Compiler (Pasca-Upgrade Expo SDK 58)
 
-Setelah upgrade ke Expo SDK 58 (React Native 0.88.1 dan aturan React Compiler / `eslint-config-expo`), dilakukan audit menyeluruh pada linter. Jumlah peringatan berhasil ditekan dari **23 peringatan menjadi 13 peringatan (0 error)**.
+Setelah upgrade ke Expo SDK 58 (React Native 0.88.1 dan aturan React Compiler / `eslint-config-expo`), dilakukan audit menyeluruh pada linter. Jumlah peringatan berhasil ditekan dari **23 peringatan menjadi 8 peringatan (0 error)** pada hasil verifikasi `npm run lint` terkini.
 
-### 11.1 Peringatan yang Berhasil Diselesaikan (10 Item)
+### 11.1 Peringatan yang Berhasil Diselesaikan (15 Item)
 1. **`mobile/src/app/(protected)/(tabs)/profil.tsx` (3 peringatan)**:
    - Aturan: `react-hooks/preserve-manual-memoization`.
    - Solusi: Menghapus pembungkus manual `useMemo` pada `namaPengguna` dan `backupDescription`. React Compiler secara otomatis mengoptimalkan kalkulasi ini tanpa risiko dependensi inferred yang tidak selaras.
@@ -276,15 +276,34 @@ Setelah upgrade ke Expo SDK 58 (React Native 0.88.1 dan aturan React Compiler / 
 5. **`mobile/src/providers/AuthProvider.tsx` (1 peringatan)**:
    - Aturan: `react-hooks/set-state-in-effect`.
    - Solusi: Menginisialisasi nilai awal state `isRemoteReady` dengan `!isSupabaseConfigured || !supabase` secara deklaratif, sehingga tidak lagi memerlukan pemanggilan `setIsRemoteReady(true)` di dalam efek saat berjalan dalam mode offline / tanpa Supabase.
+6. **Pembersihan lanjutan (`wallet.tsx` 4 peringatan & `transaksi.tsx` `exhaustive-deps` 1 peringatan)**:
+   - Pada pembaruan berikutnya, 4 peringatan `react-hooks/set-state-in-effect` di `wallet.tsx` sudah terselesaikan dan `transaksi.tsx` baris 445 telah diberi anotasi `eslint-disable-next-line react-hooks/exhaustive-deps` yang disengaja.
 
-### 11.2 Katalog 13 Peringatan yang Dipertahankan & Rasional Teknis
-Sisa 13 peringatan dipertahankan pada status `"warn"` demi menjaga stabilitas fungsional dan mencegah regresi pada alur transaksi utama:
-1. **Fallback Pemilihan Default Form (`react-hooks/set-state-in-effect` - 12 item)**:
-   - `transaksi.tsx` (baris 440, 447, 456, 465)
-   - `wallet.tsx` (baris 548, 746, 756, 762)
-   - `edit-transaksi.tsx` (baris 267, 276)
-   - `pengingat.tsx` (baris 241, 250)
-   - *Rasional*: Form-form ini menyinkronkan opsi pemilihan dompet awal (`selectedDompetId`) dan kategori default begitu data asynchronous dari SQLite selesai dimuat, atau saat menangani deep-link navigasi (`params.action === 'transfer'`). Mengubah arsitektur ini ke pola komputasi render memerlukan penulisan ulang mekanisme input formulir yang sangat krusial bagi kenyamanan pengguna warung/UMKM.
-2. **Dependensi Callback Rute (`react-hooks/exhaustive-deps` - 1 item)**:
-   - `transaksi.tsx` (baris 436 pada `useFocusEffect`): `syncJenisTransaksiFromRoute` sengaja tidak dimasukkan ke dalam daftar dependensi callback `useFocusEffect` agar pergantian tab manual (Pemasukan <-> Pengeluaran) tidak memicu pembacaan ulang database SQLite secara berulang yang dapat menyebabkan kedipan antarmuka (*flicker*).
+### 11.2 Katalog 8 Peringatan yang Dipertahankan & Rasional Teknis
+Sisa 8 peringatan (`react-hooks/set-state-in-effect`) dipertahankan pada status `"warn"` demi menjaga stabilitas fungsional dan mencegah regresi pada alur transaksi utama:
+1. **Fallback Pemilihan Default Form & Sinkronisasi Route (`react-hooks/set-state-in-effect` - 8 item)**:
+   - `mobile/src/app/(protected)/(tabs)/transaksi.tsx` (baris 450, 457, 466, 475)
+   - `mobile/src/app/(protected)/edit-transaksi.tsx` (baris 268, 277)
+   - `mobile/src/app/(protected)/pengingat.tsx` (baris 244, 253)
+   - *Rasional*: Form-form ini menyinkronkan jenis transaksi dari parameter rute (`syncJenisTransaksiFromRoute`), mereset konfirmasi dana darurat saat dompet berubah, serta menyinkronkan opsi pemilihan dompet (`selectedDompetId`/`selectedPaymentDompetId`) dan kategori default (`selectedKategoriId`) begitu data asynchronous dari SQLite selesai dimuat. Mengubah arsitektur ini ke pola komputasi render memerlukan penulisan ulang mekanisme input formulir yang sangat krusial bagi kenyamanan pengguna warung/UMKM.
+
+---
+
+## 12. Catatan Kerentanan Dependensi
+
+Berdasarkan audit di folder `mobile/` (`expo@58.0.25`):
+- Kerentanan *high* pada `brace-expansion` telah diatasi melalui pembaruan lockfile dari `1.1.13` menjadi `1.1.22`.
+- Output `npm audit` terkini menunjukkan **8 moderate, 0 high**, dan `npm audit --omit=dev` menunjukkan **3 moderate** (`minimatch` → `@expo/fingerprint` → `expo`).
+- Seluruh temuan berasal dari satu advisory yang sama: `minimatch@10.2.6` (**`GHSA-g3hv-75wg-m249`**, perbaikan tersedia di `>=11.0.1`).
+
+| Paket Terdampak | Severity | Versi Terpasang | Jalur Dependensi (`npm ls`) | Klasifikasi | Alasan Dibiarkan |
+|---|---|---|---|---|---|
+| `minimatch` | moderate | `10.2.6` | `expo` → `@expo/fingerprint` (`^10.2.6`) & `eslint-config-expo` → `@typescript-eslint/typescript-estree` (`^10.2.2`) | **TOOLING** | Perbaikan ke `>=11.0.1` adalah *major bump* di luar rentang semver induknya. |
+| `@expo/fingerprint` | moderate | `0.21.10` | `expo@58.0.25` → `@expo/fingerprint` | **TOOLING** | Alat fingerprinting build/dev (tidak ikut bundle APK); induknya masih mensyaratkan `minimatch ^10.2.6`. |
+| `expo` | moderate | `58.0.25` | Direct dependency (`expo@^58.0.25`) via `@expo/fingerprint` | **TOOLING** | Advisory hanya lewat `@expo/fingerprint`; `npm audit fix --force` menyarankan downgrade merusak ke `expo@52.0.49`. |
+| `@typescript-eslint/typescript-estree`, `@typescript-eslint/parser`, `@typescript-eslint/utils`, `@typescript-eslint/type-utils`, `@typescript-eslint/eslint-plugin` (5 paket) | moderate | `8.72.2` | `eslint-config-expo@58.0.4` → `@typescript-eslint/*` | **TOOLING** | Alat linter dev/CI saja; rilis terbaru `@typescript-eslint/typescript-estree` masih mensyaratkan `minimatch ^10.2.2`. |
+
+**Tindak lanjut**:
+- Jangan menjalankan `npm audit fix --force` atau memberi `overrides` paksa ke `minimatch@11` pada paket inti Expo/ESLint.
+- Cek ulang `npm audit` dan `npm audit --omit=dev` setiap kali ada rilis patch **Expo SDK 58** (atau pembaruan `@expo/fingerprint` / `@typescript-eslint/*`) yang telah mengadopsi `minimatch ^11.0.1`.
 
